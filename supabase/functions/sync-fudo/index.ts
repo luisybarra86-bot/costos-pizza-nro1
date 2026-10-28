@@ -1,4 +1,4 @@
-// Edge Function: sincroniza ventas e insumos (precios) de FUDO hacia Supabase.
+// Edge Function: sincroniza ventas, insumos (costos y stock), compras y recetas de FUDO hacia Supabase.
 // Secrets requeridos (supabase secrets set ...):
 //   FUDO_API_KEY, FUDO_API_SECRET   -> credenciales del usuario API de FUDO
 //   SYNC_TOKEN                      -> token propio para invocar esta función (header x-sync-token)
@@ -6,11 +6,12 @@
 //
 // Uso:
 //   GET ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD   (por defecto últimos 3 días)
-//   GET ?probe=sales|ingredients|products    (devuelve la 1ª página cruda de FUDO, sin guardar nada)
+//   GET ?probe=sales|ingredients|products|expenses  (devuelve la 1ª página cruda de FUDO, sin guardar nada;
+//       los demás parámetros de la URL se reenvían a FUDO)
 //
 // API FUDO v1alpha1 (https://dev.fu.do/api, spec: https://api.fu.do/v1alpha1/openapi.yml)
 // Formato JSON:API: { data: [{id, type, attributes, relationships}], included: [...] }
-// Pendiente de confirmar con respuestas reales (usar ?probe=): receta (recipeCard) y gastos.
+// Los atributos solo llegan si se piden con fields[tipo]=...
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
@@ -218,64 +219,83 @@ Deno.serve(async (req) => {
     return json({ ok: false, recurso: "ingredientes", parcial: resultado, error: msg }, 500);
   }
 
-  // ---------- Compras (expenses.expenseItems) ----------
-  // Apagado por defecto hasta verificar el formato real con ?probe=expenses.
-  //   ?compras=1&dry=1  -> muestra lo que guardaría (y compara con el monto del gasto) sin escribir
-  //   ?compras=1        -> guarda en la tabla compras
-  //   &precio=total     -> si expenseItem.price es el total de la línea (por defecto es precio unitario)
-  if (url.searchParams.get("compras") === "1") {
-    try {
-      const dry = url.searchParams.get("dry") === "1";
-      const precioTotal = url.searchParams.get("precio") === "total";
-      const { data: gastos, included } = await fudoList(token, "expenses", {
-        include: "expenseItems,expenseItems.ingredient,provider",
-        "filter[date]": `and(gte.${desde},lte.${hasta})`,
-      });
-      const eItems = new Map(included.filter((x) => x.type === "ExpenseItem").map((x) => [String(x.id), x]));
-      const provs = new Map(included.filter((x) => x.type === "Provider").map((x) => [String(x.id), String(x.attributes?.name ?? "")]));
-      const { data: insumos } = await db.from("insumos").select("id,fudo_ingredient_id");
-      const idPorFudo = new Map((insumos ?? []).filter((i) => i.fudo_ingredient_id).map((i) => [i.fudo_ingredient_id, i.id]));
+  // ---------- Compras (gastos con detalle) ----------
+  // Cada línea del gasto apunta a un producto de compra (ej. "Cebolla kg") o, a veces, a un insumo.
+  // `price` es el total NETO de la línea. Se guardan todas las líneas; el mapeo a insumo (tabla
+  // compra_productos) lo resuelve la vista v_compras_insumo, así que cambiarlo no requiere re-sincronizar.
+  try {
+    const { data: gastos, included } = await fudoList(token, "expenses", {
+      include: "expenseItems,expenseItems.product,expenseItems.ingredient,provider",
+      "fields[expense]": "date,canceled,expenseItems,provider",
+      "fields[expenseItem]": "quantity,price,detail,canceled,product,ingredient",
+      "fields[product]": "name",
+      "fields[ingredient]": "name",
+      "filter[date]": `and(gte.${desde},lte.${hasta})`,
+    });
+    const eItems = new Map(included.filter((x) => x.type === "ExpenseItem").map((x) => [String(x.id), x]));
+    const prodN = new Map(included.filter((x) => x.type === "Product").map((x) => [String(x.id), String(x.attributes?.name ?? "")]));
+    const ingN = new Map(included.filter((x) => x.type === "Ingredient").map((x) => [String(x.id), String(x.attributes?.name ?? "")]));
+    const provN = new Map(included.filter((x) => x.type === "Provider").map((x) => [String(x.id), String(x.attributes?.name ?? "")]));
+    const { data: insumosC } = await db.from("insumos").select("id,fudo_ingredient_id");
+    const idPorFudoC = new Map((insumosC ?? []).filter((i) => i.fudo_ingredient_id).map((i) => [i.fudo_ingredient_id, i.id]));
 
-      const filas: any[] = [];
-      const control: any[] = [];
-      let sinInsumo = 0;
-      for (const g of gastos) {
-        if (g.attributes?.canceled) continue;
-        let suma = 0;
-        for (const ref of g.relationships?.expenseItems?.data ?? []) {
-          const it = eItems.get(String(ref.id));
-          const cant = Number(it?.attributes?.quantity ?? 0);
-          const precio = Number(it?.attributes?.price ?? 0);
-          suma += precioTotal ? precio : cant * precio;
-          const insId = idPorFudo.get(String(it?.relationships?.ingredient?.data?.id));
-          if (!insId) { sinInsumo++; continue; }
-          if (!(cant > 0)) continue;
-          filas.push({
-            insumo_id: insId,
-            cantidad: cant,
-            precio_unit: precioTotal ? precio / cant : precio,
-            fecha: String(g.attributes?.date ?? "").slice(0, 10),
-            proveedor: provs.get(String(g.relationships?.provider?.data?.id)) || null,
-            fudo_expense_id: `${g.id}-${ref.id}`,
+    const lineas: any[] = [];
+    const productos = new Map<string, any>();
+    let sinVinculo = 0;
+    for (const g of gastos) {
+      if (g.attributes?.canceled || !g.attributes?.date) continue;
+      const proveedor = provN.get(String(g.relationships?.provider?.data?.id)) || null;
+      for (const ref of g.relationships?.expenseItems?.data ?? []) {
+        const it = eItems.get(String(ref.id));
+        if (!it || it.attributes?.canceled) continue;
+        const cant = Number(it.attributes?.quantity ?? 0);
+        const iid = it.relationships?.ingredient?.data?.id;
+        const pid = it.relationships?.product?.data?.id;
+        let prodId: string;
+        let nombre: string;
+        if (iid) {
+          prodId = `ING-${iid}`;
+          nombre = ingN.get(String(iid)) || `Insumo ${iid}`;
+          productos.set(prodId, {
+            fudo_product_id: prodId, producto_nombre: nombre,
+            insumo_id: idPorFudoC.get(String(iid)) ?? null, factor: 1,
           });
-        }
-        control.push({ gasto: g.id, monto: g.attributes?.amount, suma_items: Math.round(suma * 100) / 100 });
+        } else if (pid) {
+          prodId = String(pid);
+          nombre = prodN.get(prodId) || `Producto ${pid}`;
+          productos.set(prodId, { fudo_product_id: prodId, producto_nombre: nombre, insumo_id: null, factor: 1 });
+        } else { sinVinculo++; continue; }
+        if (!(cant > 0)) continue;
+        lineas.push({
+          fudo_item_id: String(it.id),
+          fudo_expense_id: String(g.id),
+          fecha: String(g.attributes.date).slice(0, 10),
+          fudo_product_id: prodId,
+          producto_nombre: nombre,
+          cantidad: cant,
+          total: Number(it.attributes?.price ?? 0),
+          proveedor,
+        });
       }
-      if (!dry) {
-        for (let i = 0; i < filas.length; i += 500) {
-          const { error } = await db.from("compras").upsert(filas.slice(i, i + 500), { onConflict: "fudo_expense_id" });
-          if (error) throw new Error(error.message);
-        }
-        await log("compras", filas.length);
-      }
-      resultado.compras_lineas = filas.length;
-      resultado.compras_items_sin_insumo = sinInsumo;
-      if (dry) return json({ ok: true, dry: true, ...resultado, muestra: filas.slice(0, 5), control: control.slice(0, 8) });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : JSON.stringify(e);
-      await log("compras", 0, msg);
-      return json({ ok: false, recurso: "compras", parcial: resultado, error: msg }, 500);
     }
+    // Productos nuevos entran sin insumo; los ya existentes (con su mapeo) no se tocan
+    const listaProd = [...productos.values()];
+    for (let i = 0; i < listaProd.length; i += 500) {
+      const { error } = await db.from("compra_productos")
+        .upsert(listaProd.slice(i, i + 500), { onConflict: "fudo_product_id", ignoreDuplicates: true });
+      if (error) throw new Error(error.message);
+    }
+    for (let i = 0; i < lineas.length; i += 500) {
+      const { error } = await db.from("compras_fudo_items").upsert(lineas.slice(i, i + 500), { onConflict: "fudo_item_id" });
+      if (error) throw new Error(error.message);
+    }
+    resultado.compras_lineas = lineas.length;
+    resultado.compras_sin_vinculo = sinVinculo;
+    await log("compras", lineas.length);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : JSON.stringify(e);
+    await log("compras", 0, msg);
+    return json({ ok: false, recurso: "compras", parcial: resultado, error: msg }, 500);
   }
 
   // ---------- Recetas (products.proportions: cantidad de insumo por unidad vendida) ----------

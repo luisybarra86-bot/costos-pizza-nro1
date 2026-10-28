@@ -5,7 +5,7 @@ const num = n => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigit
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mesLabel = d => new Date(d + 'T00:00:00').toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
 
-const S = { precios: [], resumen: [], consumo: [], alertas: [] };
+const S = { precios: [], resumen: [], consumo: [], alertas: [], compras: [], sinMapear: [] };
 let chartMes, chartHist;
 Chart.defaults.font.family = "'Poppins', system-ui, sans-serif";
 Chart.defaults.color = '#8a8a8a';
@@ -19,13 +19,15 @@ function table(cols, rows) {
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, r, c, l, ins, al] = await Promise.all([
+  const [p, r, c, l, ins, al, co, sm] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
     q('v_resumen_mensual', { col: 'mes' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
     db.from('insumos').select('id,nombre,unidad'),
-    db.from('v_alertas_insumos').select('*') // existe desde supabase-costos-v2.sql
+    db.from('v_alertas_insumos').select('*'), // existe desde supabase-costos-v2.sql
+    db.from('v_compras_vs_consumo').select('*').order('mes', { ascending: false }), // supabase-compras.sql
+    db.from('v_compras_sin_mapear').select('*').order('total', { ascending: false })
   ]);
   const err = [p, r, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
@@ -35,7 +37,26 @@ async function cargar() {
   const nombres = Object.fromEntries((ins.data || []).map(x => [x.id, x]));
   S.consumo = S.consumo.map(x => ({ ...x, nombre: nombres[x.insumo_id]?.nombre || x.insumo_id, unidad: nombres[x.insumo_id]?.unidad || '' }));
   S.alertas = al.data || [];
-  renderResumen(); renderPrecios(); fillMeses(); renderAlertas();
+  S.compras = co.data || [];
+  S.sinMapear = sm.data || [];
+  renderResumen(); renderPrecios(); fillMeses(); renderAlertas(); renderCompras();
+}
+
+function renderCompras() {
+  const m = $('mCompras').value;
+  $('tblCompras').innerHTML = table([
+    { h: 'Insumo', f: r => esc(r.nombre) },
+    { h: 'Comprado', n: 1, f: r => num(r.cantidad_comprada) + ' ' + esc(r.unidad) },
+    { h: 'Gasto neto', n: 1, f: r => money(r.costo_comprado) },
+    { h: 'Precio prom.', n: 1, f: r => r.cantidad_comprada > 0 ? money(r.costo_comprado / r.cantidad_comprada) + '/' + esc(r.unidad) : '-' },
+    { h: 'Consumo teórico', n: 1, f: r => num(r.cantidad_teorica) + ' ' + esc(r.unidad) },
+    { h: 'Diferencia', n: 1, f: r => `<span class="${r.diferencia < 0 ? 'up' : ''}">${num(r.diferencia)}</span>` }
+  ], S.compras.filter(r => r.mes === m).sort((a, b) => b.costo_comprado - a.costo_comprado));
+  $('tblSinMapear').innerHTML = table([
+    { h: 'Producto comprado', f: r => esc(r.producto_nombre) },
+    { h: 'Veces', n: 1, f: r => r.veces },
+    { h: 'Gasto neto', n: 1, f: r => money(r.total) }
+  ], S.sinMapear.slice(0, 40));
 }
 
 function renderAlertas() {
@@ -108,6 +129,7 @@ function fillMeses() {
   const opts = ms => ms.map(m => `<option value="${m}">${mesLabel(m)}</option>`).join('');
   const uniq = rows => [...new Set(rows.map(r => r.mes))].sort().reverse();
   $('mConsumo').innerHTML = opts(uniq(S.consumo));
+  $('mCompras').innerHTML = opts(uniq(S.compras));
   renderConsumo();
 }
 
@@ -122,11 +144,12 @@ function renderConsumo() {
 $('tabs').addEventListener('click', e => {
   const t = e.target.dataset.t; if (!t) return;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
-  ['resumen', 'precios', 'consumo', 'alertas'].forEach(s => $(s).classList.toggle('hidden', s !== t));
+  ['resumen', 'precios', 'consumo', 'compras', 'alertas'].forEach(s => $(s).classList.toggle('hidden', s !== t));
 });
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 $('mConsumo').addEventListener('change', renderConsumo);
+$('mCompras').addEventListener('change', renderCompras);
 
 // ---- Login (Supabase Auth). Sin sesión no se muestra ni se pide ningún dato ----
 function mostrar(conSesion) {

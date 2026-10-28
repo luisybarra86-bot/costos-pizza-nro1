@@ -2,9 +2,9 @@
 
 Dashboard de costos alimentado automáticamente desde FUDO: ventas, precios de insumos, consumo teórico (ventas × recetas) y alertas de stock. HTML/JS puro + Supabase (mismo proyecto que `pedidos-pizza-nro1`), publicado en GitHub Pages.
 
-Pestañas: **Resumen** · **Precios de insumos** · **Consumo** · **Alertas**.
+Pestañas: **Resumen** · **Precios de insumos** · **Consumo** · **Compras** · **Alertas**.
 
-Todo viene de FUDO sin carga manual: no hay compras por insumo ni cruce con los pedidos de los locales, porque FUDO no entrega compras asociadas a insumos.
+Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle: FUDO las carga contra "productos de compra" (ej. *Cebolla kg*), y la tabla `compra_productos` los asocia a su insumo con un factor (unidades del insumo por unidad comprada; ej. *Harina Campodonico Fuerza 25 kg* → Harina Campodonico, factor 25). El total de cada línea es el precio neto. Para asociar un producto nuevo o corregir un factor, se edita esa tabla en Supabase; se aplica a todo el historial sin volver a sincronizar. Los productos sin asociar se listan al pie de la pestaña Compras.
 
 ## Cómo funciona
 
@@ -17,7 +17,8 @@ Todo viene de FUDO sin carga manual: no hay compras por insumo ni cruce con los 
 1. `supabase-costos.sql` → tablas y vistas.
 2. `supabase-costos-v2.sql` → stock, alertas y vistas auxiliares.
 3. `supabase-costos-auth.sql` → solo usuarios con sesión pueden leer.
-4. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+4. `supabase-compras.sql` → compras de FUDO, mapeo producto→insumo y vistas.
+5. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).
@@ -34,7 +35,8 @@ Además:
 
 ## Para que los números sean confiables
 
-- **Stock negativo:** cargar compras en FUDO con el detalle de insumos (Gastos > Agregar detalle) y hacer un conteo de inventario inicial y periódico.
+- **Stock negativo:** las compras se cargan contra productos de compra y no contra el insumo, por eso el stock de los insumos no sube. En FUDO conviene cargarlas contra el **insumo** (Gastos > Agregar detalle) y hacer un conteo de inventario inicial y periódico.
+- **Productos de compra sin asociar:** limón (falta el rendimiento en litros de jugo por kg) y los que no son insumos de receta.
 - **Costo de las preparaciones propias** (masa, salsas, pizzas XL): FUDO no las tiene con costo, por eso el costo teórico y el margen están subestimados.
 - **Recetas:** el consumo teórico solo cuenta productos con receta cargada en FUDO.
 - **IVA:** los costos de FUDO son netos y las ventas incluyen IVA, así que el margen sale más alto de lo real.

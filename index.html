@@ -115,6 +115,7 @@
     <button data-t="resumen" class="on">Resumen</button>
     <button data-t="precios">Precios de insumos</button>
     <button data-t="consumo">Consumo</button>
+    <button data-t="compras">Compras</button>
     <button data-t="alertas">Alertas <span id="nAlertas"></span></button>
   </nav>
   <div id="msg" class="empty hidden"></div>
@@ -137,6 +138,16 @@
   <section id="consumo" class="hidden">
     <div class="tools"><select id="mConsumo"></select></div>
     <div class="card"><div id="tblConsumo"></div></div>
+  </section>
+
+  <section id="compras" class="hidden">
+    <div class="tools"><select id="mCompras"></select></div>
+    <div class="card"><h3>Comprado vs consumo teórico</h3>
+      <p style="color:var(--muted);margin-top:0">Lo comprado según las facturas de FUDO (en la unidad del insumo, a precio neto) contra lo que se debió consumir según ventas y recetas. Diferencia negativa: se consumió más de lo que se compró.</p>
+      <div id="tblCompras"></div></div>
+    <div class="card"><h3>Productos comprados sin insumo asociado</h3>
+      <p style="color:var(--muted);margin-top:0">Compras que todavía no entran en las cuentas de arriba (bebidas, limpieza, descartables u otros que falta asociar a un insumo).</p>
+      <div id="tblSinMapear"></div></div>
   </section>
 
   <section id="alertas" class="hidden">
