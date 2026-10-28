@@ -1,38 +1,46 @@
 # Pizza Nº1 · Costos
 
-Dashboard de costos: precios de insumos, consumo teórico (ventas FUDO × recetas), compra vs venta y pedidos de los locales vs compras. HTML/JS puro + Supabase (mismo proyecto que `pedidos-pizza-nro1`).
+Dashboard de costos alimentado automáticamente desde FUDO: ventas, precios de insumos, consumo teórico (ventas × recetas) y alertas de stock. HTML/JS puro + Supabase (mismo proyecto que `pedidos-pizza-nro1`), publicado en GitHub Pages.
 
-## Puesta en marcha
+Pestañas: **Resumen** · **Precios de insumos** · **Consumo** · **Alertas**.
 
-1. **Base de datos:** en Supabase (el mismo proyecto de pedidos pizza) → SQL Editor → pegar y ejecutar `supabase-costos.sql`.
-2. **Config web:** copiar `config.example.js` a `config.js` y completar URL y anon key de Supabase.
-3. **Credenciales FUDO** (nunca en el código ni en el frontend). En FUDO: Administración > Usuarios > usuario API > *Establecer* (se muestra la Secret una sola vez). Luego, en una terminal:
+Todo viene de FUDO sin carga manual: no hay compras por insumo ni cruce con los pedidos de los locales, porque FUDO no entrega compras asociadas a insumos.
 
-   ```bash
-   supabase secrets set FUDO_API_KEY=xxxx FUDO_API_SECRET=xxxx SYNC_TOKEN=un-token-largo-y-propio
-   ```
-4. **Endpoints de FUDO:** la función ya usa la API v1alpha1 (auth, `/sales`, `/ingredients`). Con `?probe=sales|ingredients|products` devuelve la respuesta cruda de FUDO para confirmar campos y ajustar el mapeo de recetas y gastos.
-5. **Desplegar la función:** `supabase functions deploy sync-fudo --no-verify-jwt`
-6. **Programar** (Supabase → Database → Cron, o pg_cron) una llamada diaria con el header `x-sync-token`.
-7. **Publicar:** subir a GitHub Pages (sin `config.js` si el repo es público: usar el flujo de deploy que ya usás en otros proyectos).
+## Cómo funciona
 
-## Datos que cargás vos
+1. Una Edge Function de Supabase (`supabase/functions/sync-fudo`) consulta la API de FUDO y guarda ventas, insumos, costos, recetas y stock.
+2. `pg_cron` la ejecuta todos los días a las 6:00 (hora Argentina) y trae los últimos 3 días.
+3. El dashboard lee los datos con Supabase Auth (solo usuarios con sesión).
 
-- `recetas`: cuánto insumo lleva cada producto de FUDO (sin esto no hay consumo teórico).
-- `precios_insumo` y `compras`: manual desde el panel de Supabase hasta que se mapeen los gastos de FUDO.
+## Puesta en marcha (orden de los SQL)
+
+1. `supabase-costos.sql` → tablas y vistas.
+2. `supabase-costos-v2.sql` → stock, alertas y vistas auxiliares.
+3. `supabase-costos-auth.sql` → solo usuarios con sesión pueden leer.
+4. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+
+Además:
+- **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).
+- **Credenciales FUDO** (nunca en el código ni en el frontend), como secrets de Supabase: `FUDO_API_KEY`, `FUDO_API_SECRET`, `SYNC_TOKEN`.
+- **Función:** pegar `supabase/functions/sync-fudo/index.ts` en Edge Functions con *Verify JWT* desactivado (se protege con `SYNC_TOKEN`).
+- **Auth:** crear el usuario en Supabase y desactivar *Allow new users to sign up*.
+- **Diagnóstico:** `?probe=sales|ingredients|products|expenses` en la función devuelve la respuesta cruda de FUDO sin guardar nada.
 
 ## Seguridad
 
-- La web solo lee (RLS). Las escrituras las hace la Edge Function con service role.
+- Las tablas solo se leen con sesión (RLS). Las escrituras las hace la Edge Function con service role.
 - `config.js` solo contiene la anon key (pública por diseño). `.env` está en `.gitignore`.
 - Si una API Secret se expuso en un chat o repo: regenerarla en FUDO.
 
+## Para que los números sean confiables
+
+- **Stock negativo:** cargar compras en FUDO con el detalle de insumos (Gastos > Agregar detalle) y hacer un conteo de inventario inicial y periódico.
+- **Costo de las preparaciones propias** (masa, salsas, pizzas XL): FUDO no las tiene con costo, por eso el costo teórico y el margen están subestimados.
+- **Recetas:** el consumo teórico solo cuenta productos con receta cargada en FUDO.
+- **IVA:** los costos de FUDO son netos y las ventas incluyen IVA, así que el margen sale más alto de lo real.
+
 ## Pendiente
 
-- **Costo por kg de las preparaciones propias** (Masa NY, Masa Molde, Salsa de Tomate, Chimichurri, salsas, pizzas XL): FUDO no las tiene con costo, por eso el costo teórico está subestimado. Se pueden cargar como precio manual en `precios_insumo` (fuente `manual`) o calcular a partir de sus ingredientes. Ver pestaña Alertas.
-- Ejecutar `supabase-costos-v2.sql` (equivalencias, alertas, stock) y redesplegar la función.
-- Verificar `?probe=expenses` y luego activar la sync de compras con `?compras=1`.
-
-- Confirmar endpoints/campos reales de FUDO (hoy son suposiciones).
-- Mapear gastos de FUDO → `compras` y `precios_insumo`.
-- Pantalla para cargar recetas y precios desde la web (requiere login).
+- Costos de preparaciones y cobertura de recetas (dependen de FUDO).
+- Ajuste de IVA en las ventas del dashboard.
+- Logo propio y ajustes de diseño.

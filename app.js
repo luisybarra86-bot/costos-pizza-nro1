@@ -5,7 +5,7 @@ const num = n => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigit
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mesLabel = d => new Date(d + 'T00:00:00').toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
 
-const S = { precios: [], resumen: [], consumo: [], cvv: [], ped: [], alertas: [] };
+const S = { precios: [], resumen: [], consumo: [], alertas: [] };
 let chartMes, chartHist;
 Chart.defaults.font.family = "'Poppins', system-ui, sans-serif";
 Chart.defaults.color = '#8a8a8a';
@@ -19,19 +19,17 @@ function table(cols, rows) {
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, r, c, v, d, l, ins, al] = await Promise.all([
+  const [p, r, c, l, ins, al] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
     q('v_resumen_mensual', { col: 'mes' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
-    q('v_compra_vs_venta', { col: 'mes', asc: false }),
-    q('v_pedido_vs_compra', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
     db.from('insumos').select('id,nombre,unidad'),
     db.from('v_alertas_insumos').select('*') // existe desde supabase-costos-v2.sql
   ]);
-  const err = [p, r, c, v, d].find(x => x.error);
+  const err = [p, r, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
-  S.precios = p.data; S.resumen = r.data; S.consumo = c.data; S.cvv = v.data; S.ped = d.data;
+  S.precios = p.data; S.resumen = r.data; S.consumo = c.data;
   if (l.data?.[0]) $('sync').textContent = 'Última sync FUDO: ' + new Date(l.data[0].created_at).toLocaleString('es-AR') + (l.data[0].error ? ' (con error)' : '');
   // El consumo usa insumo_id; el nombre sale de la tabla insumos (incluye los que aún no tienen precio)
   const nombres = Object.fromEntries((ins.data || []).map(x => [x.id, x]));
@@ -58,14 +56,13 @@ function renderResumen() {
   const u = S.resumen[S.resumen.length - 1];
   $('kpis').innerHTML = u ? [
     ['Ventas ' + mesLabel(u.mes), money(u.ventas)],
-    ['Compras ' + mesLabel(u.mes), money(u.compras)],
     ['Costo teórico', money(u.costo_teorico)],
+    ['Costo s/ ventas (parcial)', u.ventas ? num(u.costo_teorico / u.ventas * 100) + '%' : '-'],
     ['Margen teórico', money(u.margen_teorico)]
   ].map(([a, b]) => `<div class="kpi"><small>${a}</small><b>${b}</b></div>`).join('') : '';
   $('tblMes').innerHTML = table([
     { h: 'Mes', f: r => mesLabel(r.mes) },
     { h: 'Ventas', n: 1, f: r => money(r.ventas) },
-    { h: 'Compras', n: 1, f: r => money(r.compras) },
     { h: 'Costo teórico', n: 1, f: r => money(r.costo_teorico) },
     { h: 'Margen teórico', n: 1, f: r => money(r.margen_teorico) }
   ], [...S.resumen].reverse());
@@ -76,7 +73,6 @@ function renderResumen() {
       labels: S.resumen.map(r => mesLabel(r.mes)),
       datasets: [
         { label: 'Ventas', data: S.resumen.map(r => r.ventas), backgroundColor: '#2D5F3F', borderRadius: 6 },
-        { label: 'Compras', data: S.resumen.map(r => r.compras), backgroundColor: '#7FA88C', borderRadius: 6 },
         { label: 'Costo teórico', data: S.resumen.map(r => r.costo_teorico), backgroundColor: '#E8A317', borderRadius: 6 }
       ]
     }
@@ -112,9 +108,7 @@ function fillMeses() {
   const opts = ms => ms.map(m => `<option value="${m}">${mesLabel(m)}</option>`).join('');
   const uniq = rows => [...new Set(rows.map(r => r.mes))].sort().reverse();
   $('mConsumo').innerHTML = opts(uniq(S.consumo));
-  $('mCvv').innerHTML = opts(uniq(S.cvv));
-  $('mPed').innerHTML = opts(uniq(S.ped));
-  renderConsumo(); renderCvv(); renderPed();
+  renderConsumo();
 }
 
 function renderConsumo() {
@@ -125,37 +119,15 @@ function renderConsumo() {
   ], S.consumo.filter(r => r.mes === m).sort((a, b) => b.cantidad_teorica - a.cantidad_teorica));
 }
 
-function renderCvv() {
-  const m = $('mCvv').value;
-  $('tblCvv').innerHTML = table([
-    { h: 'Insumo', f: r => esc(r.nombre) },
-    { h: 'Comprado', n: 1, f: r => num(r.cantidad_comprada) + ' ' + esc(r.unidad) },
-    { h: 'Costo compra', n: 1, f: r => money(r.costo_comprado) },
-    { h: 'Consumo teórico', n: 1, f: r => num(r.cantidad_teorica) },
-    { h: 'Diferencia', n: 1, f: r => `<span class="${r.diferencia > 0 ? 'up' : r.diferencia < 0 ? 'down' : ''}">${num(r.diferencia)}</span>` }
-  ], S.cvv.filter(r => r.mes === m));
-}
-
-function renderPed() {
-  const m = $('mPed').value;
-  $('tblPed').innerHTML = table([
-    { h: 'Insumo', f: r => esc(r.nombre) },
-    { h: 'Pedido por locales', n: 1, f: r => num(r.cantidad_pedida) + ' ' + esc(r.unidad) },
-    { h: 'Comprado', n: 1, f: r => num(r.cantidad_comprada) + ' ' + esc(r.unidad) },
-    { h: 'Diferencia', n: 1, f: r => num(r.diferencia) }
-  ], S.ped.filter(r => r.mes === m));
-}
-
 $('tabs').addEventListener('click', e => {
   const t = e.target.dataset.t; if (!t) return;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
-  ['resumen', 'precios', 'consumo', 'cvv', 'pedidos', 'alertas'].forEach(s => $(s).classList.toggle('hidden', s !== t));
+  ['resumen', 'precios', 'consumo', 'alertas'].forEach(s => $(s).classList.toggle('hidden', s !== t));
 });
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 $('mConsumo').addEventListener('change', renderConsumo);
-$('mCvv').addEventListener('change', renderCvv);
-$('mPed').addEventListener('change', renderPed);
+
 // ---- Login (Supabase Auth). Sin sesión no se muestra ni se pide ningún dato ----
 function mostrar(conSesion) {
   $('login').classList.toggle('hidden', conSesion);
