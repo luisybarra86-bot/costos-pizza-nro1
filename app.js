@@ -7,6 +7,8 @@ const mesLabel = d => new Date(d + 'T00:00:00').toLocaleDateString('es-AR', { mo
 
 const S = { precios: [], resumen: [], consumo: [], cvv: [], ped: [], alertas: [] };
 let chartMes, chartHist;
+Chart.defaults.font.family = "'Poppins', system-ui, sans-serif";
+Chart.defaults.color = '#8a8a8a';
 
 function table(cols, rows) {
   if (!rows.length) return '<div class="empty">Sin datos todavía.</div>';
@@ -73,9 +75,9 @@ function renderResumen() {
     data: {
       labels: S.resumen.map(r => mesLabel(r.mes)),
       datasets: [
-        { label: 'Ventas', data: S.resumen.map(r => r.ventas), backgroundColor: '#1a8f4c' },
-        { label: 'Compras', data: S.resumen.map(r => r.compras), backgroundColor: '#e2231a' },
-        { label: 'Costo teórico', data: S.resumen.map(r => r.costo_teorico), backgroundColor: '#f0a500' }
+        { label: 'Ventas', data: S.resumen.map(r => r.ventas), backgroundColor: '#2D5F3F', borderRadius: 6 },
+        { label: 'Compras', data: S.resumen.map(r => r.compras), backgroundColor: '#7FA88C', borderRadius: 6 },
+        { label: 'Costo teórico', data: S.resumen.map(r => r.costo_teorico), backgroundColor: '#E8A317', borderRadius: 6 }
       ]
     }
   });
@@ -102,7 +104,7 @@ async function historial(id) {
   chartHist?.destroy();
   chartHist = new Chart($('chartHist'), {
     type: 'line',
-    data: { labels: (data || []).map(x => x.fecha), datasets: [{ label: 'Precio', data: (data || []).map(x => x.precio), borderColor: '#e2231a', tension: .2 }] }
+    data: { labels: (data || []).map(x => x.fecha), datasets: [{ label: 'Precio', data: (data || []).map(x => x.precio), borderColor: '#2D5F3F', backgroundColor: 'rgba(45,95,63,.12)', fill: true, pointBackgroundColor: '#2D5F3F', tension: .25 }] }
   });
 }
 
