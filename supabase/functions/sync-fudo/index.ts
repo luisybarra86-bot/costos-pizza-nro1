@@ -74,6 +74,10 @@ Deno.serve(async (req) => {
   const hasta = url.searchParams.get("hasta") ?? hoy;
   const desde = url.searchParams.get("desde") ?? fechaAR(new Date(Date.now() - 3 * 864e5).toISOString());
   const hastaExcl = new Date(new Date(hasta + "T00:00:00Z").getTime() + 864e5).toISOString().slice(0, 10);
+  // Las facturas se cargan con fecha propia y a veces días después: las compras se revisan siempre
+  // sobre los últimos 45 días (o desde `desde`, si es anterior). Reprocesar es idempotente.
+  const desde45 = fechaAR(new Date(Date.now() - 45 * 864e5).toISOString());
+  const desdeCompras = desde < desde45 ? desde : desde45;
   const probe = url.searchParams.get("probe");
 
   let token: string;
@@ -230,7 +234,7 @@ Deno.serve(async (req) => {
       "fields[expenseItem]": "quantity,price,detail,canceled,product,ingredient",
       "fields[product]": "name",
       "fields[ingredient]": "name",
-      "filter[date]": `and(gte.${desde},lte.${hasta})`,
+      "filter[date]": `and(gte.${desdeCompras},lte.${hasta})`,
     });
     const eItems = new Map(included.filter((x) => x.type === "ExpenseItem").map((x) => [String(x.id), x]));
     const prodN = new Map(included.filter((x) => x.type === "Product").map((x) => [String(x.id), String(x.attributes?.name ?? "")]));
