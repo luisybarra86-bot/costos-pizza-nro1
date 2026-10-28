@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pizza Nº1 - Costos</title>
+<style>
+  :root { --bg:#faf8f5; --surface:#fff; --text:#1f1f1f; --muted:#6b6b6b; --border:#e6e1da; --red:#e2231a; --green:#1a8f4c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px; background:var(--red); color:#fff; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:18px; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  nav { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  nav button { padding:10px 16px; border:1px solid var(--border); background:var(--surface); border-radius:8px; cursor:pointer; font-size:14px; }
+  nav button.on { background:var(--text); color:#fff; border-color:var(--text); }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:16px; overflow-x:auto; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+  .kpi { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px; }
+  .kpi small { color:var(--muted); display:block; }
+  .kpi b { font-size:20px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { padding:8px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+  td.n, th.n { text-align:right; }
+  .up { color:var(--red); font-weight:600; }
+  .down { color:var(--green); font-weight:600; }
+  input, select { padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px; }
+  .tools { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .empty { color:var(--muted); padding:16px; text-align:center; }
+  .hidden { display:none !important; }
+  #login { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; }
+  #login form { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; width:100%; max-width:340px; display:flex; flex-direction:column; gap:12px; }
+  #login h1 { margin:0; font-size:18px; }
+  #login input { width:100%; }
+  #login button { padding:10px; border:0; border-radius:8px; background:var(--red); color:#fff; font-size:15px; cursor:pointer; }
+  #loginErr { color:var(--red); font-size:13px; min-height:16px; margin:0; }
+  header button { background:rgba(255,255,255,.2); color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; font-size:12px; }
+</style>
+</head>
+<body>
+<div id="login" class="hidden">
+  <form id="formLogin">
+    <h1>🍕 Pizza Nº1 · Costos</h1>
+    <input id="lEmail" type="email" placeholder="Email" autocomplete="username" required>
+    <input id="lPass" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+    <p id="loginErr"></p>
+    <button type="submit">Ingresar</button>
+  </form>
+</div>
+<div id="app" class="hidden">
+<header>
+  <h1>🍕 Pizza Nº1 · Costos</h1>
+  <span id="sync" style="font-size:12px;opacity:.9"></span>
+  <button id="btnSalir" type="button">Salir</button>
+</header>
+<main>
+  <nav id="tabs">
+    <button data-t="resumen" class="on">Resumen</button>
+    <button data-t="precios">Precios de insumos</button>
+    <button data-t="consumo">Consumo</button>
+    <button data-t="cvv">Compra vs venta</button>
+    <button data-t="pedidos">Pedidos vs compra</button>
+    <button data-t="alertas">Alertas <span id="nAlertas"></span></button>
+  </nav>
+  <div id="msg" class="empty hidden"></div>
+
+  <section id="resumen">
+    <div class="kpis" id="kpis"></div>
+    <div class="card"><canvas id="chartMes" height="110"></canvas></div>
+    <div class="card"><div id="tblMes"></div></div>
+  </section>
+
+  <section id="precios" class="hidden">
+    <div class="tools">
+      <input id="qPrecios" placeholder="Buscar insumo…">
+      <select id="fPrecios"><option value="">Todos</option><option value="up">Solo subas</option><option value="down">Solo bajas</option></select>
+    </div>
+    <div class="card"><div id="tblPrecios"></div></div>
+    <div class="card"><h3 style="margin-top:0" id="histTitle">Historial</h3><canvas id="chartHist" height="90"></canvas></div>
+  </section>
+
+  <section id="consumo" class="hidden">
+    <div class="tools"><select id="mConsumo"></select></div>
+    <div class="card"><div id="tblConsumo"></div></div>
+  </section>
+
+  <section id="cvv" class="hidden">
+    <div class="tools"><select id="mCvv"></select></div>
+    <div class="card"><div id="tblCvv"></div></div>
+  </section>
+
+  <section id="alertas" class="hidden">
+    <div class="card"><h3 style="margin-top:0">Stock negativo en FUDO</h3>
+      <p style="color:var(--muted);margin-top:0">Se vendió más de lo cargado como compra o ajuste en FUDO. Corregirlo en FUDO (carga de compras/inventario).</p>
+      <div id="tblStockNeg"></div></div>
+    <div class="card"><h3 style="margin-top:0">Insumos de recetas sin costo</h3>
+      <p style="color:var(--muted);margin-top:0">No entran en el costo teórico: el margen se ve más alto de lo real.</p>
+      <div id="tblSinCosto"></div></div>
+  </section>
+
+  <section id="pedidos" class="hidden">
+    <div class="tools"><select id="mPed"></select></div>
+    <div class="card"><div id="tblPed"></div></div>
+  </section>
+</main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
