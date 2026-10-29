@@ -18,7 +18,8 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 2. `supabase-costos-v2.sql` → stock, alertas y vistas auxiliares.
 3. `supabase-costos-auth.sql` → solo usuarios con sesión pueden leer.
 4. `supabase-compras.sql` → compras de FUDO, mapeo producto→insumo y vistas.
-5. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+5. `supabase-precios.sql` → los precios de insumos salen de las facturas (precio neto real de cada compra); si un insumo no tiene facturas se usa el costo de FUDO. El costo teórico se valúa con ese último precio.
+6. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).

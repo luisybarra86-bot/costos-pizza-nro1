@@ -110,13 +110,14 @@ function renderPrecios() {
     { h: 'Anterior', n: 1, f: r => r.precio_anterior == null ? '-' : money(r.precio_anterior) },
     { h: 'Actual', n: 1, f: r => money(r.precio_actual) },
     { h: 'Variación', n: 1, f: r => r.variacion_pct == null ? '-' : `<span class="${r.variacion_pct > 0 ? 'up' : r.variacion_pct < 0 ? 'down' : ''}">${r.variacion_pct > 0 ? '▲' : r.variacion_pct < 0 ? '▼' : ''} ${num(r.variacion_pct)}%</span>` },
-    { h: 'Desde', f: r => esc(r.fecha_actual) }
+    { h: 'Fecha', f: r => esc(r.fecha_actual) },
+    { h: 'Origen', f: r => r.fuente === 'factura' ? 'Factura' : 'Costo FUDO' }
   ], rows);
 }
 
 async function historial(id) {
   const ins = S.precios.find(x => x.insumo_id === id);
-  const { data } = await db.from('precios_insumo').select('fecha,precio').eq('insumo_id', id).order('fecha');
+  const { data } = await db.from('v_historial_precios').select('fecha,precio').eq('insumo_id', id).order('fecha'); // supabase-precios.sql
   $('histTitle').textContent = 'Historial: ' + (ins?.nombre || '');
   chartHist?.destroy();
   chartHist = new Chart($('chartHist'), {
