@@ -5,8 +5,8 @@ const num = n => (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigit
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mesLabel = d => new Date(d + 'T00:00:00').toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
 
-const S = { precios: [], resumen: [], consumo: [], alertas: [], compras: [], sinMapear: [] };
-let chartMes, chartHist;
+const S = { precios: [], consumo: [], alertas: [], compras: [], sinMapear: [], ventas: null };
+let chartHist;
 Chart.defaults.font.family = "'Poppins', system-ui, sans-serif";
 Chart.defaults.color = '#8a8a8a';
 
@@ -19,9 +19,8 @@ function table(cols, rows) {
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, r, c, l, ins, al, co, sm] = await Promise.all([
+  const [p, c, l, ins, al, co, sm] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
-    q('v_resumen_mensual', { col: 'mes' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
     db.from('insumos').select('id,nombre,unidad'),
@@ -29,9 +28,9 @@ async function cargar() {
     db.from('v_compras_vs_consumo').select('*').order('mes', { ascending: false }), // supabase-compras.sql
     db.from('v_compras_sin_mapear').select('*').order('total', { ascending: false })
   ]);
-  const err = [p, r, c].find(x => x.error);
+  const err = [p, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
-  S.precios = p.data; S.resumen = r.data; S.consumo = c.data;
+  S.precios = p.data; S.consumo = c.data;
   if (l.data?.[0]) $('sync').textContent = 'Última sync FUDO: ' + new Date(l.data[0].created_at).toLocaleString('es-AR') + (l.data[0].error ? ' (con error)' : '');
   // El consumo usa insumo_id; el nombre sale de la tabla insumos (incluye los que aún no tienen precio)
   const nombres = Object.fromEntries((ins.data || []).map(x => [x.id, x]));
@@ -39,7 +38,81 @@ async function cargar() {
   S.alertas = al.data || [];
   S.compras = co.data || [];
   S.sinMapear = sm.data || [];
-  renderResumen(); renderPrecios(); fillMeses(); renderAlertas(); renderCompras();
+  renderPrecios(); fillMeses(); renderAlertas(); renderCompras();
+  cargarVentas();
+}
+
+// ---- Ventas: modo (salón / take away / delivery), rubros, horarios y cajas. El cálculo se hace en la base (ventas_panel) ----
+const MODOS = { DELIVERY: 'Delivery', TAKEAWAY: 'Take away', 'EAT-IN': 'Salón' };
+const DIAS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const bar = (v, max) => `<span class="bar"><i style="width:${max ? Math.round(v / max * 100) : 0}%"></i></span>`;
+let ventasReq = 0;
+
+function rango() {
+  const v = $('vPeriodo').value, hoy = new Date(), h = iso(hoy);
+  const atras = n => { const d = new Date(hoy); d.setDate(d.getDate() - n); return iso(d); };
+  if (v === 'hoy') return [h, h];
+  if (v === '7') return [atras(6), h];
+  if (v === '30') return [atras(29), h];
+  if (v === 'mes') return [iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), h];
+  return ['2000-01-01', h];
+}
+
+async function cargarVentas() {
+  const req = ++ventasReq, [d, h] = rango();
+  const { data, error } = await db.rpc('ventas_panel', { p_desde: d, p_hasta: h, p_modo: $('vModo').value || null });
+  if (req !== ventasReq) return; // llegó una consulta más nueva
+  const msg = $('vMsg');
+  if (error) { msg.textContent = 'No se pudieron cargar las ventas: ' + error.message; msg.classList.remove('hidden'); return; }
+  msg.classList.add('hidden');
+  S.ventas = data;
+  renderVentas();
+}
+
+function renderVentas() {
+  const v = S.ventas; if (!v) return;
+  const totalMonto = v.por_modo.reduce((a, m) => a + Number(m.monto), 0);
+  $('vModos').innerHTML = v.por_modo.length ? v.por_modo.map(m => `<div class="kpi"><small>${MODOS[m.tipo] || esc(m.tipo)}</small><b>${money(m.monto)}</b>
+    <div class="sub">${num(m.ventas)} ventas · ticket ${money(m.ticket)} · ${totalMonto ? num(m.monto / totalMonto * 100) : 0}%</div></div>`).join('')
+    : '<div class="empty">No hay ventas en este período.</div>';
+
+  const maxR = Math.max(0, ...v.por_rubro.map(r => Number(r.monto)));
+  $('tblRubro').innerHTML = table([
+    { h: 'Rubro', f: r => esc(r.rubro) },
+    { h: 'Unidades', n: 1, f: r => num(r.unidades) },
+    { h: 'Monto', n: 1, f: r => money(r.monto) + bar(r.monto, maxR) }
+  ], v.por_rubro);
+  $('tblProd').innerHTML = table([
+    { h: 'Producto', f: r => esc(r.producto) },
+    { h: 'Rubro', f: r => esc(r.rubro) },
+    { h: 'Unidades', n: 1, f: r => num(r.unidades) },
+    { h: 'Monto', n: 1, f: r => money(r.monto) }
+  ], v.productos);
+
+  const maxD = Math.max(0, ...v.por_dia.map(r => Number(r.ventas)));
+  $('tblDia').innerHTML = table([
+    { h: 'Día', f: r => DIAS[r.dow] || r.dow },
+    { h: 'Ventas', n: 1, f: r => num(r.ventas) + bar(r.ventas, maxD) },
+    { h: 'Monto', n: 1, f: r => money(r.monto) }
+  ], v.por_dia);
+  const maxF = Math.max(0, ...v.por_franja.map(r => Number(r.ventas)));
+  $('tblFranja').innerHTML = table([
+    { h: 'Franja', f: r => esc(String(r.franja).replace(/^\d · /, '')) },
+    { h: 'Ventas', n: 1, f: r => num(r.ventas) + bar(r.ventas, maxF) },
+    { h: 'Monto', n: 1, f: r => money(r.monto) }
+  ], v.por_franja);
+
+  const c = v.cajas, dias = Number(v.dias) || 0, porDia = n => dias ? num(n / dias) + ' por día' : '';
+  $('vCajas').innerHTML = [
+    ['Cajas grandes', c.grande_est, porDia(c.grande_est) + ' · cargadas en FUDO: ' + num(c.grande_cargadas)],
+    ['Cajas chicas', c.chica_est, porDia(c.chica_est) + ' · cargadas en FUDO: ' + num(c.chica_cargadas)]
+  ].map(([a, n, s]) => `<div class="kpi"><small>${a}</small><b>${num(n)}</b><div class="sub">${s}</div></div>`).join('');
+  $('tblCajasModo').innerHTML = table([
+    { h: 'Modo', f: r => MODOS[r.tipo] || esc(r.tipo) },
+    { h: 'Cajas grandes', n: 1, f: r => num(r.grande) },
+    { h: 'Cajas chicas', n: 1, f: r => num(r.chica) }
+  ], v.cajas_modo);
 }
 
 function renderCompras() {
@@ -71,33 +144,6 @@ function renderAlertas() {
     { h: 'Insumo', f: r => esc(r.nombre) },
     { h: 'Unidad', f: r => esc(r.unidad) }
   ], sin);
-}
-
-function renderResumen() {
-  const u = S.resumen[S.resumen.length - 1];
-  $('kpis').innerHTML = u ? [
-    ['Ventas ' + mesLabel(u.mes), money(u.ventas)],
-    ['Costo teórico', money(u.costo_teorico)],
-    ['Costo s/ ventas (parcial)', u.ventas ? num(u.costo_teorico / u.ventas * 100) + '%' : '-'],
-    ['Margen teórico', money(u.margen_teorico)]
-  ].map(([a, b]) => `<div class="kpi"><small>${a}</small><b>${b}</b></div>`).join('') : '';
-  $('tblMes').innerHTML = table([
-    { h: 'Mes', f: r => mesLabel(r.mes) },
-    { h: 'Ventas', n: 1, f: r => money(r.ventas) },
-    { h: 'Costo teórico', n: 1, f: r => money(r.costo_teorico) },
-    { h: 'Margen teórico', n: 1, f: r => money(r.margen_teorico) }
-  ], [...S.resumen].reverse());
-  chartMes?.destroy();
-  chartMes = new Chart($('chartMes'), {
-    type: 'bar',
-    data: {
-      labels: S.resumen.map(r => mesLabel(r.mes)),
-      datasets: [
-        { label: 'Ventas', data: S.resumen.map(r => r.ventas), backgroundColor: '#2D5F3F', borderRadius: 6 },
-        { label: 'Costo teórico', data: S.resumen.map(r => r.costo_teorico), backgroundColor: '#E8A317', borderRadius: 6 }
-      ]
-    }
-  });
 }
 
 function renderPrecios() {
@@ -145,12 +191,13 @@ function renderConsumo() {
 $('tabs').addEventListener('click', e => {
   const t = e.target.dataset.t; if (!t) return;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
-  ['resumen', 'precios', 'consumo', 'compras', 'alertas'].forEach(s => $(s).classList.toggle('hidden', s !== t));
+  ['ventas', 'precios', 'consumo', 'compras', 'alertas'].forEach(s => $(s).classList.toggle('hidden', s !== t));
 });
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 $('mConsumo').addEventListener('change', renderConsumo);
 $('mCompras').addEventListener('change', renderCompras);
+['vPeriodo', 'vModo'].forEach(i => $(i).addEventListener('change', cargarVentas));
 
 // ---- Login (Supabase Auth). Sin sesión no se muestra ni se pide ningún dato ----
 function mostrar(conSesion) {

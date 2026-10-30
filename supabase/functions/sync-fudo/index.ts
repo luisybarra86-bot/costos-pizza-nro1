@@ -112,16 +112,47 @@ Deno.serve(async (req) => {
   const log = (recurso: string, filas: number, error?: string) =>
     db.from("sync_log").insert({ recurso, desde, hasta, filas, error: error ?? null });
 
-  // ---------- Ventas (items de ventas cerradas) ----------
+  // ---------- Ventas (cabecera por modo + items de ventas cerradas + catálogo de productos) ----------
+  // Se piden solo los campos necesarios de la venta (no se guardan datos de clientes).
   try {
     const { data: ventas, included } = await fudoList(token, "sales", {
-      include: "items,items.product",
+      include: "items,items.product,items.product.productCategory",
+      "fields[sale]": "closedAt,createdAt,saleType,total,items",
       "filter[saleState]": "in.(CLOSED)",
       // día argentino = 03:00Z del día hasta 03:00Z del siguiente
       "filter[closedAt]": `and(gte.${desde}T03:00:00Z,lt.${hastaExcl}T03:00:00Z)`,
     });
     const itemsInc = new Map(included.filter((x) => x.type === "Item").map((x) => [String(x.id), x]));
     const prodInc = new Map(included.filter((x) => x.type === "Product").map((x) => [String(x.id), x]));
+    const catInc = new Map(included.filter((x) => x.type === "ProductCategory").map((x) => [String(x.id), String(x.attributes?.name ?? "")]));
+
+    // Catálogo: producto -> categoría (base de la clasificación porción / pizza / bebida / etc.)
+    const catalogo = [...prodInc.entries()].map(([id, p]) => ({
+      producto_id: id,
+      nombre: String(p.attributes?.name ?? id),
+      categoria: catInc.get(String(p.relationships?.productCategory?.data?.id)) || null,
+    }));
+    for (let i = 0; i < catalogo.length; i += 500) {
+      const { error } = await db.from("productos_fudo").upsert(catalogo.slice(i, i + 500), { onConflict: "producto_id" });
+      if (error) throw new Error(error.message);
+    }
+
+    // Cabecera de cada venta: modo (EAT-IN salón, TAKEAWAY, DELIVERY), hora de cierre y total
+    const cabeceras = ventas.map((s: any) => {
+      const cerrada = String(s.attributes?.closedAt ?? s.attributes?.createdAt);
+      return {
+        fudo_sale_id: String(s.id),
+        fecha: fechaAR(cerrada),
+        cerrada_at: cerrada,
+        tipo: String(s.attributes?.saleType ?? "OTRO"),
+        total: Number(s.attributes?.total ?? 0),
+      };
+    });
+    for (let i = 0; i < cabeceras.length; i += 500) {
+      const { error } = await db.from("ventas_fudo").upsert(cabeceras.slice(i, i + 500), { onConflict: "fudo_sale_id" });
+      if (error) throw new Error(error.message);
+    }
+    resultado.ventas = cabeceras.length;
 
     const filas: any[] = [];
     for (const s of ventas) {
@@ -139,7 +170,8 @@ Deno.serve(async (req) => {
           producto_id: pid,
           producto_nombre: String(prodInc.get(pid)?.attributes?.name ?? pid),
           cantidad: cant,
-          total: Number(it.attributes?.price ?? 0) * cant,
+          // `price` del item es el total de la línea (no el unitario)
+          total: Number(it.attributes?.price ?? 0),
         });
       }
     }
@@ -189,8 +221,9 @@ Deno.serve(async (req) => {
 
     const { data: insumos } = await db.from("insumos").select("id,fudo_ingredient_id");
     const idPorFudo = new Map((insumos ?? []).filter((i) => i.fudo_ingredient_id).map((i) => [i.fudo_ingredient_id, i.id]));
-    const { data: actuales } = await db.from("v_variacion_precios").select("insumo_id,precio_actual");
-    const precioActual = new Map((actuales ?? []).map((a) => [a.insumo_id, Number(a.precio_actual)]));
+    // Se compara contra el último costo de FUDO guardado (no contra el precio de factura, que es otro dato)
+    const { data: actuales } = await db.from("v_costo_fudo_actual").select("insumo_id,precio");
+    const precioActual = new Map((actuales ?? []).map((a) => [a.insumo_id, Number(a.precio)]));
 
     // Stock actual de FUDO (para alertas de stock negativo)
     const conStock = ings.filter((g) => idPorFudo.has(String(g.id)));

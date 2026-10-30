@@ -53,6 +53,11 @@
   .kpi small { display:block; color:var(--muted); font-size:.68rem; font-weight:600; text-transform:uppercase; letter-spacing:.6px; }
   .kpi b { font-family:var(--font-head); font-weight:400; font-size:2rem; line-height:1.15; color:var(--primary-dark); }
 
+  .kpi .sub { font-size:.72rem; color:var(--muted); margin-top:2px; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+  .bar { display:inline-block; vertical-align:middle; width:70px; height:8px; background:var(--primary-soft); border-radius:99px; margin-left:8px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--primary); border-radius:99px; }
+
   /* Tablas */
   table { width:100%; border-collapse:collapse; font-size:.82rem; }
   th { font-size:.68rem; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); font-weight:600; }
@@ -112,7 +117,7 @@
 
 <main>
   <nav id="tabs">
-    <button data-t="resumen" class="on">Resumen</button>
+    <button data-t="ventas" class="on">Ventas</button>
     <button data-t="precios">Precios de insumos</button>
     <button data-t="consumo">Consumo</button>
     <button data-t="compras">Compras</button>
@@ -120,10 +125,34 @@
   </nav>
   <div id="msg" class="empty hidden"></div>
 
-  <section id="resumen">
-    <div class="kpis" id="kpis"></div>
-    <div class="card"><canvas id="chartMes" height="110"></canvas></div>
-    <div class="card"><div id="tblMes"></div></div>
+  <section id="ventas">
+    <div class="tools">
+      <select id="vPeriodo">
+        <option value="hoy">Hoy</option>
+        <option value="7">Últimos 7 días</option>
+        <option value="30" selected>Últimos 30 días</option>
+        <option value="mes">Mes actual</option>
+        <option value="todo">Todo el historial</option>
+      </select>
+      <select id="vModo">
+        <option value="">Todos los modos</option>
+        <option value="DELIVERY">Delivery</option>
+        <option value="TAKEAWAY">Take away</option>
+        <option value="EAT-IN">Salón</option>
+      </select>
+    </div>
+    <div id="vMsg" class="empty hidden"></div>
+    <div class="kpis" id="vModos"></div>
+    <div class="card"><h3>Qué se vendió, por rubro</h3><div id="tblRubro"></div></div>
+    <div class="card"><h3>Productos más vendidos</h3><div id="tblProd"></div></div>
+    <div class="grid2">
+      <div class="card"><h3>Por día de la semana</h3><div id="tblDia"></div></div>
+      <div class="card"><h3>Por franja horaria</h3><div id="tblFranja"></div></div>
+    </div>
+    <div class="card"><h3>Cajas usadas (estimadas)</h3>
+      <p style="color:var(--muted);margin-top:0">Según la regla del local: cada pizza entera va en una caja grande (dos mitades, una); las porciones sueltas van en una caja chica si son 1 o 2, y en una grande si son 3 o más. El salón no usa caja.</p>
+      <div class="kpis" id="vCajas"></div>
+      <div id="tblCajasModo"></div></div>
   </section>
 
   <section id="precios" class="hidden">

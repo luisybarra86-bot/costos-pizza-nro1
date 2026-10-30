@@ -2,7 +2,11 @@
 
 Dashboard de costos alimentado automáticamente desde FUDO: ventas, precios de insumos, consumo teórico (ventas × recetas) y alertas de stock. HTML/JS puro + Supabase (mismo proyecto que `pedidos-pizza-nro1`), publicado en GitHub Pages.
 
-Pestañas: **Resumen** · **Precios de insumos** · **Consumo** · **Compras** · **Alertas**.
+Pestañas: **Ventas** · **Precios de insumos** · **Consumo** · **Compras** · **Alertas**.
+
+**Ventas** muestra, por período y modo de venta (salón, take away, delivery): monto, cantidad y ticket promedio; qué se vendió por rubro (porción, NY Grande, molde, media masa, bebida, dip, promo) y por producto; cuándo (día de la semana y franja horaria) y las cajas usadas. El rubro sale de la categoría del producto en FUDO; los combos se descomponen por su nombre (ej. "2 Cheese Slice + Coca" = 2 porciones).
+
+**Cajas:** en FUDO casi no se cargan "Caja chica/grande" en las ventas, así que se estiman con la regla del local: cada pizza entera va en una caja grande (dos mitades, una); las porciones sueltas van en una caja chica si son 1 o 2, y en una grande si son 3 o más; el salón no usa caja. Esas cajas (y su fólex) alimentan el consumo teórico.
 
 Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle: FUDO las carga contra "productos de compra" (ej. *Cebolla kg*), y la tabla `compra_productos` los asocia a su insumo con un factor (unidades del insumo por unidad comprada; ej. *Harina Campodonico Fuerza 25 kg* → Harina Campodonico, factor 25). El total de cada línea es el precio neto. Para asociar un producto nuevo o corregir un factor, se edita esa tabla en Supabase; se aplica a todo el historial sin volver a sincronizar. Los productos sin asociar se listan al pie de la pestaña Compras.
 
@@ -19,7 +23,9 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 3. `supabase-costos-auth.sql` → solo usuarios con sesión pueden leer.
 4. `supabase-compras.sql` → compras de FUDO, mapeo producto→insumo y vistas.
 5. `supabase-precios.sql` → los precios de insumos salen de las facturas (precio neto real de cada compra); si un insumo no tiene facturas se usa el costo de FUDO. El costo teórico se valúa con ese último precio.
-6. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+6. `supabase-ventas.sql` → ventas por modo, rubros, cajas estimadas y la función `ventas_panel`.
+7. `supabase-precios-fix.sql` → corrige la comparación de costos de FUDO y limpia repetidos.
+8. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).
