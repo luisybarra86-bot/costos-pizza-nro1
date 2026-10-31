@@ -10,11 +10,13 @@ let chartHist;
 Chart.defaults.font.family = "'Poppins', system-ui, sans-serif";
 Chart.defaults.color = '#8a8a8a';
 
-function table(cols, rows) {
+// Todas las tablas son compactas: menos espacio entre columnas y los textos largos pasan a la línea siguiente
+function table(cols, rows, cls = 'compacta') {
   if (!rows.length) return '<div class="empty">Sin datos todavía.</div>';
   const head = cols.map(c => `<th class="${c.n ? 'n' : ''}">${c.h}</th>`).join('');
-  const body = rows.map(r => '<tr>' + cols.map(c => `<td class="${c.n ? 'n' : ''}">${c.f(r)}</td>`).join('') + '</tr>').join('');
-  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  const body = rows.map(r => '<tr>' + cols.map(c => `<td class="${c.n ? 'n' : ''}" data-l="${esc(c.h)}"><span>${c.f(r)}</span></td>`).join('') + '</tr>').join('');
+  // Con 5 columnas o más, en celular cada fila pasa a ser una tarjeta (ver CSS "apila")
+  return `<table class="${cls}${cols.length >= 5 ? ' apila' : ''}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 async function cargar() {
@@ -53,16 +55,16 @@ function renderProdCompra() {
   $('tblProdCompra').innerHTML = table([
     { h: 'Producto', f: r => `<a href="#" data-p="${esc(r.fudo_product_id)}">${esc(r.producto_nombre)}</a>` + (r.unidades_por_bulto ? ` <small title="Los precios van por unidad: la cantidad se llevó a botellas">(bulto x${num(r.unidades_por_bulto)})</small>` : '') },
     { h: 'Proveedor', f: r => esc(r.proveedor || '-') },
-    { h: 'Última compra', f: r => r.fecha ? esc(r.fecha) : '-' },
-    { h: 'Cantidad', n: 1, f: r => r.cantidad == null ? '-' : num(r.cantidad) },
-    { h: 'Total línea', n: 1, f: r => r.total == null ? '-' : money(r.total) },
-    { h: 'Precio unit.', n: 1, f: r => r.precio_unit == null ? '<span title="Ninguna compra encaja con el precio esperado">datos dudosos</span>' : money(r.precio_unit) },
-    { h: 'Anterior', n: 1, f: r => r.precio_anterior == null ? '-' : money(r.precio_anterior) },
+    { h: 'Fecha', f: r => r.fecha ? esc(r.fecha) : '-' },
+    { h: 'Precio unit.', n: 1, f: r => r.precio_unit == null ? '<span title="Ninguna compra encaja con el precio esperado">dudoso</span>' : money(r.precio_unit) },
     { h: 'Variación', n: 1, f: r => r.variacion_pct != null
         ? `<span class="${r.variacion_pct > 0 ? 'up' : r.variacion_pct < 0 ? 'down' : ''}">${r.variacion_pct > 0 ? '▲' : r.variacion_pct < 0 ? '▼' : ''} ${num(r.variacion_pct)}%</span>`
-        : (r.cambio_unidad ? '<span title="La cantidad se cargó en otra unidad que en la compra anterior">cambió la unidad</span>' : '-') },
-    { h: 'Compras', n: 1, f: r => r.compras + (r.lineas_dudosas ? ` <small title="Líneas cuyo precio no encaja con la cantidad cargada; no entran en el precio">(+${r.lineas_dudosas} dudosas)</small>` : '') }
-  ], rows);
+        : (r.cambio_unidad ? '<span title="La cantidad se cargó en otra unidad que en la compra anterior">otra unidad</span>' : '-') },
+    { h: 'Anterior', n: 1, f: r => r.precio_anterior == null ? '-' : money(r.precio_anterior) },
+    { h: 'Cantidad', n: 1, f: r => r.cantidad == null ? '-' : num(r.cantidad) },
+    { h: 'Total', n: 1, f: r => r.total == null ? '-' : money(r.total) },
+    { h: 'Compras', n: 1, f: r => r.compras + (r.lineas_dudosas ? ` <small title="Líneas cuyo precio no encaja con la cantidad cargada; no entran en el precio">(+${r.lineas_dudosas} dud.)</small>` : '') }
+  ], rows, 'compacta');
 }
 
 // ---- Ventas: modo (salón / take away / delivery), rubros, horarios y cajas. El cálculo se hace en la base (ventas_panel) ----
@@ -181,7 +183,7 @@ function renderPrecios() {
     { h: 'Variación', n: 1, f: r => r.variacion_pct == null ? '-' : `<span class="${r.variacion_pct > 0 ? 'up' : r.variacion_pct < 0 ? 'down' : ''}">${r.variacion_pct > 0 ? '▲' : r.variacion_pct < 0 ? '▼' : ''} ${num(r.variacion_pct)}%</span>` },
     { h: 'Fecha', f: r => esc(r.fecha_actual) },
     { h: 'Origen', f: r => r.fuente === 'factura' ? 'Factura' : 'Costo FUDO' }
-  ], rows);
+  ], rows, 'compacta');
 }
 
 async function historial(id) {
