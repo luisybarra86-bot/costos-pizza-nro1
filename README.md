@@ -26,7 +26,8 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 6. `supabase-ventas.sql` → ventas por modo, rubros, cajas estimadas y la función `ventas_panel`.
 7. `supabase-precios-fix.sql` → corrige la comparación de costos de FUDO y limpia repetidos.
 8. `supabase-precios-compra.sql` → precios de compra por producto (todo lo que se carga en las facturas, esté o no asociado a un insumo).
-9. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+9. `supabase-bultos.sql` → lleva las compras de bebidas a unidades (botellas) según las unidades por cajón/fardo (tabla `producto_bulto`).
+10. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).

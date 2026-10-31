@@ -166,7 +166,7 @@
     <div class="card"><h3 id="histTitle">Historial</h3><canvas id="chartHist" height="90"></canvas></div>
 
     <h3 class="seccion">Precios de compra por producto</h3>
-    <p class="nota">Todo lo que cargás en las facturas de FUDO, esté o no asociado a un insumo. El precio unitario es el total de la línea sobre la cantidad, en la unidad en que se cargó. Si la unidad cambió entre dos compras (por ejemplo, un cajón y después botellas), no se calcula la variación.</p>
+    <p class="nota">Todo lo que cargás en las facturas de FUDO, esté o no asociado a un insumo. El precio unitario es el total de la línea sobre la cantidad. En las bebidas que vienen en cajón o fardo, la cantidad se lleva a botellas (aunque la hayas cargado en bultos). Las líneas cuyo precio no encaja con la cantidad quedan como "dudosas" y no cuentan. En los demás productos, si la unidad cambió entre dos compras no se calcula la variación.</p>
     <div class="tools">
       <input id="qProd" placeholder="Buscar producto…">
       <select id="fProv"><option value="">Todos los proveedores</option></select>

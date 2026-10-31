@@ -51,17 +51,17 @@ function renderProdCompra() {
   const q = $('qProd').value.toLowerCase(), pv = $('fProv').value;
   const rows = (S.prodCompra || []).filter(x => x.producto_nombre.toLowerCase().includes(q) && (!pv || x.proveedor === pv));
   $('tblProdCompra').innerHTML = table([
-    { h: 'Producto', f: r => esc(r.producto_nombre) },
+    { h: 'Producto', f: r => esc(r.producto_nombre) + (r.unidades_por_bulto ? ` <small title="Los precios van por unidad: la cantidad se llevó a botellas">(bulto x${num(r.unidades_por_bulto)})</small>` : '') },
     { h: 'Proveedor', f: r => esc(r.proveedor || '-') },
-    { h: 'Última compra', f: r => esc(r.fecha) },
-    { h: 'Cantidad', n: 1, f: r => num(r.cantidad) },
-    { h: 'Total línea', n: 1, f: r => money(r.total) },
-    { h: 'Precio unit.', n: 1, f: r => money(r.precio_unit) },
+    { h: 'Última compra', f: r => r.fecha ? esc(r.fecha) : '-' },
+    { h: 'Cantidad', n: 1, f: r => r.cantidad == null ? '-' : num(r.cantidad) },
+    { h: 'Total línea', n: 1, f: r => r.total == null ? '-' : money(r.total) },
+    { h: 'Precio unit.', n: 1, f: r => r.precio_unit == null ? '<span title="Ninguna compra encaja con el precio esperado">datos dudosos</span>' : money(r.precio_unit) },
     { h: 'Anterior', n: 1, f: r => r.precio_anterior == null ? '-' : money(r.precio_anterior) },
     { h: 'Variación', n: 1, f: r => r.variacion_pct != null
         ? `<span class="${r.variacion_pct > 0 ? 'up' : r.variacion_pct < 0 ? 'down' : ''}">${r.variacion_pct > 0 ? '▲' : r.variacion_pct < 0 ? '▼' : ''} ${num(r.variacion_pct)}%</span>`
         : (r.cambio_unidad ? '<span title="La cantidad se cargó en otra unidad que en la compra anterior">cambió la unidad</span>' : '-') },
-    { h: 'Compras', n: 1, f: r => r.compras }
+    { h: 'Compras', n: 1, f: r => r.compras + (r.lineas_dudosas ? ` <small title="Líneas cuyo precio no encaja con la cantidad cargada; no entran en el precio">(+${r.lineas_dudosas} dudosas)</small>` : '') }
   ], rows);
 }
 
