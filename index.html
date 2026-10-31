@@ -120,7 +120,7 @@
 <main>
   <nav id="tabs">
     <button data-t="ventas" class="on">Ventas</button>
-    <button data-t="precios">Precios de insumos</button>
+    <button data-t="precios">Precios</button>
     <button data-t="consumo">Consumo</button>
     <button data-t="compras">Compras</button>
     <button data-t="alertas">Alertas <span id="nAlertas"></span></button>
@@ -158,20 +158,22 @@
   </section>
 
   <section id="precios" class="hidden">
-    <div class="tools">
-      <input id="qPrecios" placeholder="Buscar insumo…">
-      <select id="fPrecios"><option value="">Todos</option><option value="up">Solo subas</option><option value="down">Solo bajas</option></select>
-    </div>
-    <div class="card"><div id="tblPrecios"></div></div>
-    <div class="card"><h3 id="histTitle">Historial</h3><canvas id="chartHist" height="90"></canvas></div>
-
-    <h3 class="seccion">Precios de compra por producto</h3>
-    <p class="nota">Todo lo que cargás en las facturas de FUDO, esté o no asociado a un insumo. El precio unitario es el total de la línea sobre la cantidad. En las bebidas que vienen en cajón o fardo, la cantidad se lleva a botellas (aunque la hayas cargado en bultos). Las líneas cuyo precio no encaja con la cantidad quedan como "dudosas" y no cuentan. En los demás productos, si la unidad cambió entre dos compras no se calcula la variación.</p>
+    <h3 class="seccion" style="margin-top:0">Todo lo que comprás</h3>
+    <p class="nota">Gaseosas, cervezas, insumos, descartables y limpieza: todo lo que cargás en las facturas de FUDO, con su precio por unidad. Tocá un producto para ver cómo cambió su precio. En las bebidas que vienen en cajón o fardo, la cantidad se lleva a botellas o latas (aunque la hayas cargado en bultos). Las líneas cuyo precio no encaja con la cantidad quedan como "dudosas" y no cuentan. En los demás productos, si la unidad cambió entre dos compras no se calcula la variación.</p>
     <div class="tools">
       <input id="qProd" placeholder="Buscar producto…">
       <select id="fProv"><option value="">Todos los proveedores</option></select>
     </div>
     <div class="card"><div id="tblProdCompra"></div></div>
+    <div class="card"><h3 id="histTitle">Historial de precios</h3><canvas id="chartHist" height="90"></canvas></div>
+
+    <h3 class="seccion">Insumos de receta</h3>
+    <p class="nota">Solo los insumos que usan las recetas, con su precio por kg, litro o unidad. Es el precio que se usa para el costo teórico. Si tiene facturas, sale de la última; si no, del costo cargado en FUDO.</p>
+    <div class="tools">
+      <input id="qPrecios" placeholder="Buscar insumo…">
+      <select id="fPrecios"><option value="">Todos</option><option value="up">Solo subas</option><option value="down">Solo bajas</option></select>
+    </div>
+    <div class="card"><div id="tblPrecios"></div></div>
   </section>
 
   <section id="consumo" class="hidden">

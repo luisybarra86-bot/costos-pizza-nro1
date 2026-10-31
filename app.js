@@ -51,7 +51,7 @@ function renderProdCompra() {
   const q = $('qProd').value.toLowerCase(), pv = $('fProv').value;
   const rows = (S.prodCompra || []).filter(x => x.producto_nombre.toLowerCase().includes(q) && (!pv || x.proveedor === pv));
   $('tblProdCompra').innerHTML = table([
-    { h: 'Producto', f: r => esc(r.producto_nombre) + (r.unidades_por_bulto ? ` <small title="Los precios van por unidad: la cantidad se llevó a botellas">(bulto x${num(r.unidades_por_bulto)})</small>` : '') },
+    { h: 'Producto', f: r => `<a href="#" data-p="${esc(r.fudo_product_id)}">${esc(r.producto_nombre)}</a>` + (r.unidades_por_bulto ? ` <small title="Los precios van por unidad: la cantidad se llevó a botellas">(bulto x${num(r.unidades_por_bulto)})</small>` : '') },
     { h: 'Proveedor', f: r => esc(r.proveedor || '-') },
     { h: 'Última compra', f: r => r.fecha ? esc(r.fecha) : '-' },
     { h: 'Cantidad', n: 1, f: r => r.cantidad == null ? '-' : num(r.cantidad) },
@@ -188,11 +188,25 @@ async function historial(id) {
   const ins = S.precios.find(x => x.insumo_id === id);
   const { data } = await db.from('v_historial_precios').select('fecha,precio').eq('insumo_id', id).order('fecha'); // supabase-precios.sql
   $('histTitle').textContent = 'Historial: ' + (ins?.nombre || '');
+  dibujarHist((data || []).map(x => x.fecha), (data || []).map(x => x.precio));
+}
+
+// Historial de un producto comprado: precio por unidad de cada compra (sin las líneas dudosas)
+async function historialProducto(id) {
+  const prod = (S.prodCompra || []).find(x => x.fudo_product_id === id);
+  const { data } = await db.from('v_compras_norm').select('fecha,total,unidades')
+    .eq('fudo_product_id', id).not('unidades', 'is', null).order('fecha'); // supabase-bultos.sql
+  $('histTitle').textContent = 'Historial: ' + (prod?.producto_nombre || '') + ' (precio por unidad)';
+  dibujarHist((data || []).map(x => x.fecha), (data || []).map(x => Math.round(x.total / x.unidades * 100) / 100));
+}
+
+function dibujarHist(labels, values) {
   chartHist?.destroy();
   chartHist = new Chart($('chartHist'), {
     type: 'line',
-    data: { labels: (data || []).map(x => x.fecha), datasets: [{ label: 'Precio', data: (data || []).map(x => x.precio), borderColor: '#2D5F3F', backgroundColor: 'rgba(45,95,63,.12)', fill: true, pointBackgroundColor: '#2D5F3F', tension: .25 }] }
+    data: { labels, datasets: [{ label: 'Precio', data: values, borderColor: '#2D5F3F', backgroundColor: 'rgba(45,95,63,.12)', fill: true, pointBackgroundColor: '#2D5F3F', tension: .25 }] }
   });
+  $('histTitle').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function fillMeses() {
@@ -219,6 +233,7 @@ $('tabs').addEventListener('click', e => {
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 ['qProd', 'fProv'].forEach(i => $(i).addEventListener('input', renderProdCompra));
+$('tblProdCompra').addEventListener('click', e => { const id = e.target.dataset.p; if (id) { e.preventDefault(); historialProducto(id); } });
 $('mConsumo').addEventListener('change', renderConsumo);
 $('mCompras').addEventListener('change', renderCompras);
 ['vPeriodo', 'vModo'].forEach(i => $(i).addEventListener('change', cargarVentas));
