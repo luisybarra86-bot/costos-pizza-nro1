@@ -25,7 +25,8 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 5. `supabase-precios.sql` → los precios de insumos salen de las facturas (precio neto real de cada compra); si un insumo no tiene facturas se usa el costo de FUDO. El costo teórico se valúa con ese último precio.
 6. `supabase-ventas.sql` → ventas por modo, rubros, cajas estimadas y la función `ventas_panel`.
 7. `supabase-precios-fix.sql` → corrige la comparación de costos de FUDO y limpia repetidos.
-8. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+8. `supabase-precios-compra.sql` → precios de compra por producto (todo lo que se carga en las facturas, esté o no asociado a un insumo).
+9. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).

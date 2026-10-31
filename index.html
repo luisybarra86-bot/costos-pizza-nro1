@@ -54,6 +54,8 @@
   .kpi b { font-family:var(--font-head); font-weight:400; font-size:2rem; line-height:1.15; color:var(--primary-dark); }
 
   .kpi .sub { font-size:.72rem; color:var(--muted); margin-top:2px; }
+  h3.seccion { margin:22px 0 4px; font-size:1.3rem; color:var(--primary-dark); }
+  p.nota { color:var(--muted); font-size:.8rem; margin:0 0 12px; }
   .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
   .bar { display:inline-block; vertical-align:middle; width:70px; height:8px; background:var(--primary-soft); border-radius:99px; margin-left:8px; overflow:hidden; }
   .bar i { display:block; height:100%; background:var(--primary); border-radius:99px; }
@@ -162,6 +164,14 @@
     </div>
     <div class="card"><div id="tblPrecios"></div></div>
     <div class="card"><h3 id="histTitle">Historial</h3><canvas id="chartHist" height="90"></canvas></div>
+
+    <h3 class="seccion">Precios de compra por producto</h3>
+    <p class="nota">Todo lo que cargás en las facturas de FUDO, esté o no asociado a un insumo. El precio unitario es el total de la línea sobre la cantidad, en la unidad en que se cargó. Si la unidad cambió entre dos compras (por ejemplo, un cajón y después botellas), no se calcula la variación.</p>
+    <div class="tools">
+      <input id="qProd" placeholder="Buscar producto…">
+      <select id="fProv"><option value="">Todos los proveedores</option></select>
+    </div>
+    <div class="card"><div id="tblProdCompra"></div></div>
   </section>
 
   <section id="consumo" class="hidden">

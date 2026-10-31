@@ -19,14 +19,15 @@ function table(cols, rows) {
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, c, l, ins, al, co, sm] = await Promise.all([
+  const [p, c, l, ins, al, co, sm, pc] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
     db.from('insumos').select('id,nombre,unidad'),
     db.from('v_alertas_insumos').select('*'), // existe desde supabase-costos-v2.sql
     db.from('v_compras_vs_consumo').select('*').order('mes', { ascending: false }), // supabase-compras.sql
-    db.from('v_compras_sin_mapear').select('*').order('total', { ascending: false })
+    db.from('v_compras_sin_mapear').select('*').order('total', { ascending: false }),
+    db.from('v_precios_compra_producto').select('*').order('fecha', { ascending: false }) // supabase-precios-compra.sql
   ]);
   const err = [p, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
@@ -38,8 +39,30 @@ async function cargar() {
   S.alertas = al.data || [];
   S.compras = co.data || [];
   S.sinMapear = sm.data || [];
-  renderPrecios(); fillMeses(); renderAlertas(); renderCompras();
+  S.prodCompra = pc.data || [];
+  const provs = [...new Set(S.prodCompra.map(x => x.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  $('fProv').innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(x => `<option>${esc(x)}</option>`).join('');
+  renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras();
   cargarVentas();
+}
+
+// Precios de compra por producto (lo que se carga en las facturas de FUDO, esté o no asociado a un insumo)
+function renderProdCompra() {
+  const q = $('qProd').value.toLowerCase(), pv = $('fProv').value;
+  const rows = (S.prodCompra || []).filter(x => x.producto_nombre.toLowerCase().includes(q) && (!pv || x.proveedor === pv));
+  $('tblProdCompra').innerHTML = table([
+    { h: 'Producto', f: r => esc(r.producto_nombre) },
+    { h: 'Proveedor', f: r => esc(r.proveedor || '-') },
+    { h: 'Última compra', f: r => esc(r.fecha) },
+    { h: 'Cantidad', n: 1, f: r => num(r.cantidad) },
+    { h: 'Total línea', n: 1, f: r => money(r.total) },
+    { h: 'Precio unit.', n: 1, f: r => money(r.precio_unit) },
+    { h: 'Anterior', n: 1, f: r => r.precio_anterior == null ? '-' : money(r.precio_anterior) },
+    { h: 'Variación', n: 1, f: r => r.variacion_pct != null
+        ? `<span class="${r.variacion_pct > 0 ? 'up' : r.variacion_pct < 0 ? 'down' : ''}">${r.variacion_pct > 0 ? '▲' : r.variacion_pct < 0 ? '▼' : ''} ${num(r.variacion_pct)}%</span>`
+        : (r.cambio_unidad ? '<span title="La cantidad se cargó en otra unidad que en la compra anterior">cambió la unidad</span>' : '-') },
+    { h: 'Compras', n: 1, f: r => r.compras }
+  ], rows);
 }
 
 // ---- Ventas: modo (salón / take away / delivery), rubros, horarios y cajas. El cálculo se hace en la base (ventas_panel) ----
@@ -195,6 +218,7 @@ $('tabs').addEventListener('click', e => {
 });
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
+['qProd', 'fProv'].forEach(i => $(i).addEventListener('input', renderProdCompra));
 $('mConsumo').addEventListener('change', renderConsumo);
 $('mCompras').addEventListener('change', renderCompras);
 ['vPeriodo', 'vModo'].forEach(i => $(i).addEventListener('change', cargarVentas));
