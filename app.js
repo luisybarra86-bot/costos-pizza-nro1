@@ -22,7 +22,7 @@ function table(cols, rows, cls = 'compacta') {
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, c, l, ins, al, co, sm, pc, rv] = await Promise.all([
+  const [p, c, l, ins, al, co, sm, pc, rv, mk] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
@@ -31,7 +31,8 @@ async function cargar() {
     db.from('v_compras_vs_consumo').select('*').order('mes', { ascending: false }), // supabase-compras.sql
     db.from('v_compras_sin_mapear').select('*').order('total', { ascending: false }),
     db.from('v_precios_compra_producto').select('*').order('fecha', { ascending: false }), // supabase-precios-compra.sql
-    db.from('v_cargas_revisar').select('*').order('fecha', { ascending: false }) // supabase-cargas.sql
+    db.from('v_cargas_revisar').select('*').order('fecha', { ascending: false }), // supabase-cargas.sql
+    db.from('revisiones_marcadas').select('clave') // supabase-revisiones.sql
   ]);
   const err = [p, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
@@ -47,6 +48,7 @@ async function cargar() {
   const provs = [...new Set(S.prodCompra.map(x => x.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   $('fProv').innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(x => `<option>${esc(x)}</option>`).join('');
   S.revisar = rv.data || [];
+  S.marcadas = new Set((mk.data || []).map(x => x.clave));
   const provRev = [...new Set(S.revisar.map(x => x.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   $('fRevProv').innerHTML = '<option value="">Todos los proveedores</option>' + provRev.map(x => `<option>${esc(x)}</option>`).join('');
   renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras(); renderRevisar();
@@ -54,12 +56,32 @@ async function cargar() {
 }
 
 // Cargas para revisar (supabase-cargas.sql): monto que no cierra, líneas sin producto y precios fuera de lo habitual
+// Clave estable de un aviso: si la carga cambia (otros montos o producto), el aviso nuevo vuelve a aparecer sin tilde
+const claveRev = r => [r.motivo, r.fecha, r.comprobante || '', r.producto || '', r.detalle || '',
+  Math.round(r.suma_lineas || 0), Math.round(r.monto || 0), Math.round(r.total || 0)].join('|');
+
+async function marcarRevision(clave, marcar) {
+  const msg = $('revMsg');
+  const q = db.from('revisiones_marcadas');
+  const { error } = marcar ? await q.insert({ clave }) : await q.delete().eq('clave', clave);
+  if (error) {
+    msg.textContent = 'No se pudo guardar el tilde: ' + error.message + ' (falta ejecutar supabase-revisiones.sql en Supabase).';
+    msg.classList.remove('hidden');
+    return false;
+  }
+  msg.classList.add('hidden');
+  if (marcar) S.marcadas.add(clave); else S.marcadas.delete(clave);
+  return true;
+}
+
 function renderRevisar() {
-  const todos = S.revisar || [];
-  $('nRevisar').textContent = todos.length ? `(${todos.length})` : '';
-  const mot = $('fRevMotivo').value, pv = $('fRevProv').value;
+  const todos = S.revisar || [], marcadas = S.marcadas || new Set();
+  const pendientes = todos.filter(x => !marcadas.has(claveRev(x)));
+  $('nRevisar').textContent = pendientes.length ? `(${pendientes.length})` : '';
+  const mot = $('fRevMotivo').value, pv = $('fRevProv').value, vista = $('fRevVista').value;
   const agrupa = m => (m === 'dudosa' ? 'precio' : m);
-  const rows = todos.filter(x => (!mot || agrupa(x.motivo) === mot) && (!pv || x.proveedor === pv));
+  const rows = todos.filter(x => (!mot || agrupa(x.motivo) === mot) && (!pv || x.proveedor === pv)
+    && (vista === 'todas' || (vista === 'marcadas') === marcadas.has(claveRev(x))));
   const etiqueta = { monto: 'El monto no cierra', sin_producto: 'Línea sin producto', precio: 'Precio fuera de lo habitual', dudosa: 'Cantidad que no encaja' };
   const detalle = r => {
     if (r.motivo === 'monto') {
@@ -79,8 +101,9 @@ function renderRevisar() {
     { h: 'Proveedor', f: r => esc(r.proveedor || '-') },
     { h: 'Comprobante', f: r => esc(r.comprobante || '-') },
     { h: 'Aviso', f: r => `<span class="chip">${etiqueta[r.motivo] || esc(r.motivo)}</span>` },
-    { h: 'Qué revisar', w: 1, f: r => detalle(r) }
-  ], rows) : '<div class="empty">No hay cargas para revisar. 👌</div>';
+    { h: 'Qué revisar', w: 1, f: r => marcadas.has(claveRev(r)) ? `<span class="hecho">${detalle(r)}</span>` : detalle(r) },
+    { h: 'Resuelto', n: 1, f: r => `<input type="checkbox" class="tilde" data-k="${encodeURIComponent(claveRev(r))}" ${marcadas.has(claveRev(r)) ? 'checked' : ''} title="Marcar como resuelto">` }
+  ], rows) : `<div class="empty">${vista === 'marcadas' ? 'Todavía no marcaste ninguna como resuelta.' : 'No hay cargas pendientes para revisar. 👌'}</div>`;
 }
 
 // Precios de compra por producto (lo que se carga en las facturas de FUDO, esté o no asociado a un insumo)
@@ -270,7 +293,13 @@ $('tabs').addEventListener('click', e => {
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 ['qProd', 'fProv'].forEach(i => $(i).addEventListener('input', renderProdCompra));
-['fRevMotivo', 'fRevProv'].forEach(i => $(i).addEventListener('change', renderRevisar));
+['fRevMotivo', 'fRevProv', 'fRevVista'].forEach(i => $(i).addEventListener('change', renderRevisar));
+$('tblRevisar').addEventListener('change', async e => {
+  const k = e.target.dataset?.k; if (!k) return;
+  const ok = await marcarRevision(decodeURIComponent(k), e.target.checked);
+  if (!ok) e.target.checked = !e.target.checked; // no se pudo guardar: se deja como estaba
+  renderRevisar();
+});
 $('tblProdCompra').addEventListener('click', e => { const id = e.target.dataset.p; if (id) { e.preventDefault(); historialProducto(id); } });
 $('mConsumo').addEventListener('change', renderConsumo);
 $('mCompras').addEventListener('change', renderCompras);

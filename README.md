@@ -28,7 +28,8 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 8. `supabase-precios-compra.sql` → precios de compra por producto (todo lo que se carga en las facturas, esté o no asociado a un insumo).
 9. `supabase-bultos.sql` → lleva las compras de bebidas a unidades (botellas) según las unidades por cajón/fardo (tabla `producto_bulto`).
 10. `supabase-cargas.sql` → controles de las facturas cargadas (pestaña Revisar cargas): monto que no cierra con las líneas, líneas sin producto y precios fuera de lo habitual. Requiere redesplegar la función y volver a sincronizar el historial.
-11. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+11. `supabase-revisiones.sql` → tilde de "resuelto" en Revisar cargas (recordatorio guardado en la base, visible desde cualquier dispositivo).
+12. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).
