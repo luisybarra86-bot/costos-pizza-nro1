@@ -47,10 +47,12 @@ select 'monto'::text as motivo, g.fecha, g.proveedor, g.comprobante, null::text 
        null::numeric as cantidad, null::numeric as total, null::numeric as precio_unit,
        null::numeric as mediana, null::text as detalle
 from gastos_control g
-left join t on t.proveedor = g.proveedor and t.n >= 3
+left join t on t.proveedor = g.proveedor and t.n >= 2
 where g.suma_lineas > 0
   and g.lineas_sin_producto = 0   -- si hay líneas sin producto, ese aviso ya explica la diferencia
   and not (t.tipica is not null and abs(g.monto / g.suma_lineas / t.tipica - 1) <= 0.04)
+  -- proveedores con impuesto interno (gaseosas, cervezas): la razón va de 1,30 a 1,50 según los productos de cada factura
+  and not (t.tipica > 1.30 and g.monto / g.suma_lineas between 1.30 and 1.50)
   and not (abs(g.monto / g.suma_lineas - 1.105) <= 0.012 or abs(g.monto / g.suma_lineas - 1.135) <= 0.012
         or abs(g.monto / g.suma_lineas - 1.21) <= 0.012 or abs(g.monto / g.suma_lineas - 1.24) <= 0.012)
 union all

@@ -354,6 +354,8 @@ Deno.serve(async (req) => {
         suma += total;
         n++;
         if (!it.relationships?.ingredient?.data?.id && !it.relationships?.product?.data?.id) {
+          // Un envío o flete es un costo de la factura, no un producto: es normal que no tenga producto elegido
+          if (/env[ií]o|flete/i.test(String(it.attributes?.detail ?? ""))) continue;
           sinProd++;
           sinProdTotal += total;
           if (it.attributes?.detail) detalles.push(String(it.attributes.detail));
