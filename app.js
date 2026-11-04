@@ -14,14 +14,15 @@ Chart.defaults.color = '#8a8a8a';
 function table(cols, rows, cls = 'compacta') {
   if (!rows.length) return '<div class="empty">Sin datos todavía.</div>';
   const head = cols.map(c => `<th class="${c.n ? 'n' : ''}">${c.h}</th>`).join('');
-  const body = rows.map(r => '<tr>' + cols.map(c => `<td class="${c.n ? 'n' : ''}" data-l="${esc(c.h)}"><span>${c.f(r)}</span></td>`).join('') + '</tr>').join('');
+  // c.w = columna de texto largo: puede ocupar varias líneas
+  const body = rows.map(r => '<tr>' + cols.map(c => `<td class="${c.n ? 'n' : ''}${c.w ? ' largo' : ''}" data-l="${esc(c.h)}"><span>${c.f(r)}</span></td>`).join('') + '</tr>').join('');
   // Con 5 columnas o más, en celular cada fila pasa a ser una tarjeta (ver CSS "apila")
   return `<table class="${cls}${cols.length >= 5 ? ' apila' : ''}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, c, l, ins, al, co, sm, pc] = await Promise.all([
+  const [p, c, l, ins, al, co, sm, pc, rv] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
@@ -29,7 +30,8 @@ async function cargar() {
     db.from('v_alertas_insumos').select('*'), // existe desde supabase-costos-v2.sql
     db.from('v_compras_vs_consumo').select('*').order('mes', { ascending: false }), // supabase-compras.sql
     db.from('v_compras_sin_mapear').select('*').order('total', { ascending: false }),
-    db.from('v_precios_compra_producto').select('*').order('fecha', { ascending: false }) // supabase-precios-compra.sql
+    db.from('v_precios_compra_producto').select('*').order('fecha', { ascending: false }), // supabase-precios-compra.sql
+    db.from('v_cargas_revisar').select('*').order('fecha', { ascending: false }) // supabase-cargas.sql
   ]);
   const err = [p, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
@@ -44,8 +46,41 @@ async function cargar() {
   S.prodCompra = pc.data || [];
   const provs = [...new Set(S.prodCompra.map(x => x.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   $('fProv').innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(x => `<option>${esc(x)}</option>`).join('');
-  renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras();
+  S.revisar = rv.data || [];
+  const provRev = [...new Set(S.revisar.map(x => x.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  $('fRevProv').innerHTML = '<option value="">Todos los proveedores</option>' + provRev.map(x => `<option>${esc(x)}</option>`).join('');
+  renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras(); renderRevisar();
   cargarVentas();
+}
+
+// Cargas para revisar (supabase-cargas.sql): monto que no cierra, líneas sin producto y precios fuera de lo habitual
+function renderRevisar() {
+  const todos = S.revisar || [];
+  $('nRevisar').textContent = todos.length ? `(${todos.length})` : '';
+  const mot = $('fRevMotivo').value, pv = $('fRevProv').value;
+  const agrupa = m => (m === 'dudosa' ? 'precio' : m);
+  const rows = todos.filter(x => (!mot || agrupa(x.motivo) === mot) && (!pv || x.proveedor === pv));
+  const etiqueta = { monto: 'El monto no cierra', sin_producto: 'Línea sin producto', precio: 'Precio fuera de lo habitual', dudosa: 'Cantidad que no encaja' };
+  const detalle = r => {
+    if (r.motivo === 'monto') {
+      const tip = r.tipica ? `; lo normal con este proveedor es ${num(r.tipica)}` : '';
+      return `Las líneas suman ${money(r.suma_lineas)} y el monto es ${money(r.monto)} (monto ÷ líneas = ${num(r.razon)}${tip}). Revisá cantidades, precios o el monto: tiene que ser el total de la factura y las líneas, el neto.`;
+    }
+    if (r.motivo === 'sin_producto') {
+      return `${num(r.cantidad)} línea(s) sin producto por ${money(r.total)}${r.detalle ? ': ' + esc(r.detalle) : ''}. Elegí el producto o, si era una prueba, cancelá la línea.`;
+    }
+    if (r.motivo === 'dudosa') {
+      return `${esc(r.producto)}: cantidad ${num(r.cantidad)} por ${money(r.total)}. El precio no coincide ni con unidades ni con bultos; revisá la cantidad o el total.`;
+    }
+    return `${esc(r.producto)}: ${num(r.cantidad)} por ${money(r.total)} = ${money(r.precio_unit)} por unidad; lo habitual ronda ${money(r.mediana)}.`;
+  };
+  $('tblRevisar').innerHTML = rows.length ? table([
+    { h: 'Fecha', f: r => esc(r.fecha) },
+    { h: 'Proveedor', f: r => esc(r.proveedor || '-') },
+    { h: 'Comprobante', f: r => esc(r.comprobante || '-') },
+    { h: 'Aviso', f: r => `<span class="chip">${etiqueta[r.motivo] || esc(r.motivo)}</span>` },
+    { h: 'Qué revisar', w: 1, f: r => detalle(r) }
+  ], rows) : '<div class="empty">No hay cargas para revisar. 👌</div>';
 }
 
 // Precios de compra por producto (lo que se carga en las facturas de FUDO, esté o no asociado a un insumo)
@@ -230,11 +265,12 @@ function renderConsumo() {
 $('tabs').addEventListener('click', e => {
   const t = e.target.dataset.t; if (!t) return;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
-  ['ventas', 'precios', 'consumo', 'compras', 'alertas'].forEach(s => $(s).classList.toggle('hidden', s !== t));
+  ['ventas', 'precios', 'consumo', 'compras', 'alertas', 'revisar'].forEach(s => $(s).classList.toggle('hidden', s !== t));
 });
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 ['qProd', 'fProv'].forEach(i => $(i).addEventListener('input', renderProdCompra));
+['fRevMotivo', 'fRevProv'].forEach(i => $(i).addEventListener('change', renderRevisar));
 $('tblProdCompra').addEventListener('click', e => { const id = e.target.dataset.p; if (id) { e.preventDefault(); historialProducto(id); } });
 $('mConsumo').addEventListener('change', renderConsumo);
 $('mCompras').addEventListener('change', renderCompras);

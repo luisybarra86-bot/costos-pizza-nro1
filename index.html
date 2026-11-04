@@ -39,8 +39,9 @@
   nav button { flex:0 0 auto; padding:9px 16px; border:1.5px solid var(--border); background:var(--card); color:var(--text); border-radius:999px; cursor:pointer; font:500 .82rem var(--font-body); transition:background .15s,color .15s,border-color .15s; }
   nav button:hover { border-color:var(--primary); color:var(--primary); }
   nav button.on { background:var(--primary); color:#fff; border-color:var(--primary); }
-  nav #nAlertas { background:var(--amber); color:#2b2b2b; font-weight:600; border-radius:999px; padding:1px 7px; font-size:.7rem; margin-left:4px; }
-  nav #nAlertas:empty { display:none; }
+  nav #nAlertas, nav #nRevisar { background:var(--amber); color:#2b2b2b; font-weight:600; border-radius:999px; padding:1px 7px; font-size:.7rem; margin-left:4px; }
+  nav #nAlertas:empty, nav #nRevisar:empty { display:none; }
+  .chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:.7rem; font-weight:600; background:#FBF1D9; color:#8a5a00; white-space:nowrap; }
 
   /* Tarjetas y KPIs */
   .card { background:var(--card); border-radius:var(--r); box-shadow:var(--shadow); padding:18px; margin-bottom:16px; overflow-x:auto; }
@@ -69,6 +70,7 @@
   table.compacta { font-size:.78rem; }
   table.compacta th, table.compacta td { padding:8px 5px; }
   table.compacta td:nth-child(-n+2) { white-space:normal; min-width:90px; max-width:200px; }
+  table.compacta td.largo { white-space:normal; min-width:240px; max-width:none; text-align:left; }
   td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
   a { color:var(--primary); font-weight:500; text-decoration:none; }
   a:hover { text-decoration:underline; }
@@ -140,6 +142,7 @@
     <button data-t="consumo">Consumo</button>
     <button data-t="compras">Compras</button>
     <button data-t="alertas">Alertas <span id="nAlertas"></span></button>
+    <button data-t="revisar">Revisar cargas <span id="nRevisar"></span></button>
   </nav>
   <div id="msg" class="empty hidden"></div>
 
@@ -214,6 +217,21 @@
     <div class="card"><h3>Insumos de recetas sin costo</h3>
       <p style="color:var(--muted);margin-top:0">No entran en el costo teórico: el margen se ve más alto de lo real.</p>
       <div id="tblSinCosto"></div></div>
+  </section>
+
+  <section id="revisar" class="hidden">
+    <h3 class="seccion" style="margin-top:0">Cargas para revisar</h3>
+    <p class="nota">Controles automáticos sobre las facturas cargadas en FUDO: que el monto cierre con las líneas, que cada línea tenga producto y que el precio por unidad no se salga de lo habitual. Cuando corregís la carga en FUDO, el aviso desaparece solo en la próxima sincronización (6:00).</p>
+    <div class="tools">
+      <select id="fRevMotivo">
+        <option value="">Todos los avisos</option>
+        <option value="monto">El monto no cierra</option>
+        <option value="sin_producto">Líneas sin producto</option>
+        <option value="precio">Precio fuera de lo habitual</option>
+      </select>
+      <select id="fRevProv"><option value="">Todos los proveedores</option></select>
+    </div>
+    <div class="card"><div id="tblRevisar"></div></div>
   </section>
 </main>
 </div>

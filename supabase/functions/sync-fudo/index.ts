@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
   try {
     const { data: gastos, included } = await fudoList(token, "expenses", {
       include: "expenseItems,expenseItems.product,expenseItems.ingredient,provider",
-      "fields[expense]": "date,canceled,expenseItems,provider",
+      "fields[expense]": "date,amount,receiptNumber,canceled,expenseItems,provider",
       "fields[expenseItem]": "quantity,price,detail,canceled,product,ingredient",
       "fields[product]": "name",
       "fields[ingredient]": "name",
@@ -326,7 +326,73 @@ Deno.serve(async (req) => {
       const { error } = await db.from("compras_fudo_items").upsert(lineas.slice(i, i + 500), { onConflict: "fudo_item_id" });
       if (error) throw new Error(error.message);
     }
+    // Reconciliación: las líneas que ya no están vigentes en FUDO (gasto o línea anulados, línea borrada o
+    // sin producto) se eliminan de la copia, dentro de la misma ventana de fechas que se acaba de consultar.
+    const vigentes = new Set(lineas.map((l) => l.fudo_item_id));
+    const sobrantes: string[] = [];
+    for (let desdeFila = 0; ; desdeFila += 1000) {
+      const { data: existentes, error } = await db.from("compras_fudo_items").select("fudo_item_id")
+        .gte("fecha", desdeCompras).lte("fecha", hasta).order("fudo_item_id").range(desdeFila, desdeFila + 999);
+      if (error) throw new Error(error.message);
+      for (const e of existentes ?? []) if (!vigentes.has(e.fudo_item_id)) sobrantes.push(e.fudo_item_id);
+      if ((existentes ?? []).length < 1000) break;
+    }
+    for (let i = 0; i < sobrantes.length; i += 100) {
+      const { error } = await db.from("compras_fudo_items").delete().in("fudo_item_id", sobrantes.slice(i, i + 100));
+      if (error) throw new Error(error.message);
+    }
+    // Control de cada gasto vigente: monto, suma de sus líneas y líneas sin producto (para la pestaña Revisar)
+    const control: any[] = [];
+    for (const g of gastos) {
+      if (g.attributes?.canceled || !g.attributes?.date) continue;
+      let suma = 0, n = 0, sinProd = 0, sinProdTotal = 0;
+      const detalles: string[] = [];
+      for (const ref of g.relationships?.expenseItems?.data ?? []) {
+        const it = eItems.get(String(ref.id));
+        if (!it || it.attributes?.canceled) continue;
+        const total = Number(it.attributes?.price ?? 0);
+        suma += total;
+        n++;
+        if (!it.relationships?.ingredient?.data?.id && !it.relationships?.product?.data?.id) {
+          sinProd++;
+          sinProdTotal += total;
+          if (it.attributes?.detail) detalles.push(String(it.attributes.detail));
+        }
+      }
+      control.push({
+        fudo_expense_id: String(g.id),
+        fecha: String(g.attributes.date).slice(0, 10),
+        proveedor: provN.get(String(g.relationships?.provider?.data?.id)) || null,
+        comprobante: g.attributes?.receiptNumber ? String(g.attributes.receiptNumber) : null,
+        monto: Number(g.attributes?.amount ?? 0),
+        suma_lineas: Math.round(suma * 100) / 100,
+        lineas: n,
+        lineas_sin_producto: sinProd,
+        sin_producto_total: Math.round(sinProdTotal * 100) / 100,
+        sin_producto_detalle: detalles.join(" · ").slice(0, 255) || null,
+      });
+    }
+    for (let i = 0; i < control.length; i += 500) {
+      const { error } = await db.from("gastos_control").upsert(control.slice(i, i + 500), { onConflict: "fudo_expense_id" });
+      if (error) throw new Error(error.message);
+    }
+    // Gastos que ya no están vigentes (anulados o borrados) se sacan de la copia, en la misma ventana
+    const gastosVigentes = new Set(control.map((c) => c.fudo_expense_id));
+    const gastosSobrantes: string[] = [];
+    for (let desdeFila = 0; ; desdeFila += 1000) {
+      const { data: ex, error } = await db.from("gastos_control").select("fudo_expense_id")
+        .gte("fecha", desdeCompras).lte("fecha", hasta).order("fudo_expense_id").range(desdeFila, desdeFila + 999);
+      if (error) throw new Error(error.message);
+      for (const e of ex ?? []) if (!gastosVigentes.has(e.fudo_expense_id)) gastosSobrantes.push(e.fudo_expense_id);
+      if ((ex ?? []).length < 1000) break;
+    }
+    for (let i = 0; i < gastosSobrantes.length; i += 100) {
+      const { error } = await db.from("gastos_control").delete().in("fudo_expense_id", gastosSobrantes.slice(i, i + 100));
+      if (error) throw new Error(error.message);
+    }
+    resultado.gastos_control = control.length;
     resultado.compras_lineas = lineas.length;
+    resultado.compras_eliminadas = sobrantes.length;
     resultado.compras_sin_vinculo = sinVinculo;
     await log("compras", lineas.length);
   } catch (e) {

@@ -2,7 +2,7 @@
 
 Dashboard de costos alimentado automáticamente desde FUDO: ventas, precios de insumos, consumo teórico (ventas × recetas) y alertas de stock. HTML/JS puro + Supabase (mismo proyecto que `pedidos-pizza-nro1`), publicado en GitHub Pages.
 
-Pestañas: **Ventas** · **Precios de insumos** · **Consumo** · **Compras** · **Alertas**.
+Pestañas: **Ventas** · **Precios** · **Consumo** · **Compras** · **Alertas** · **Revisar cargas**.
 
 **Ventas** muestra, por período y modo de venta (salón, take away, delivery): monto, cantidad y ticket promedio; qué se vendió por rubro (porción, NY Grande, molde, media masa, bebida, dip, promo) y por producto; cuándo (día de la semana y franja horaria) y las cajas usadas. El rubro sale de la categoría del producto en FUDO; los combos se descomponen por su nombre (ej. "2 Cheese Slice + Coca" = 2 porciones).
 
@@ -27,7 +27,8 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 7. `supabase-precios-fix.sql` → corrige la comparación de costos de FUDO y limpia repetidos.
 8. `supabase-precios-compra.sql` → precios de compra por producto (todo lo que se carga en las facturas, esté o no asociado a un insumo).
 9. `supabase-bultos.sql` → lleva las compras de bebidas a unidades (botellas) según las unidades por cajón/fardo (tabla `producto_bulto`).
-10. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+10. `supabase-cargas.sql` → controles de las facturas cargadas (pestaña Revisar cargas): monto que no cierra con las líneas, líneas sin producto y precios fuera de lo habitual. Requiere redesplegar la función y volver a sincronizar el historial.
+11. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).
