@@ -74,14 +74,38 @@ async function marcarRevision(clave, marcar) {
   return true;
 }
 
+// Los avisos se agrupan por factura (fecha + proveedor + comprobante): una fila por factura con todo lo que hay que revisar.
+// El tilde es por factura; si cambia algo de sus avisos (otros montos o producto), la fila vuelve sin tilde.
+const hashRev = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+const ORDEN_REV = { sin_producto: 0, monto: 1, dudosa: 2, precio: 3 };
+function gruposRev(avisos) {
+  const m = new Map();
+  for (const a of avisos) {
+    const base = `${a.fecha}|${a.proveedor || ''}|${a.comprobante || ''}`;
+    if (!m.has(base)) m.set(base, { base, fecha: a.fecha, proveedor: a.proveedor, comprobante: a.comprobante, items: [] });
+    m.get(base).items.push(a);
+  }
+  return [...m.values()].map(g => {
+    g.items.sort((x, y) => (ORDEN_REV[x.motivo] ?? 9) - (ORDEN_REV[y.motivo] ?? 9));
+    g.clave = 'g:' + g.base + '#' + hashRev(g.items.map(claveRev).sort().join('||'));
+    return g;
+  }).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+}
+
 function renderRevisar() {
-  const todos = S.revisar || [], marcadas = S.marcadas || new Set();
-  const pendientes = todos.filter(x => !marcadas.has(claveRev(x)));
+  const marcadas = S.marcadas || new Set();
+  const dEsc = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+  const todos = gruposRev(S.revisar || []);
+  // El contador de la pestaña cuenta las facturas pendientes de los últimos 60 días
+  const corte60 = dEsc(60);
+  const pendientes = todos.filter(g => g.fecha >= corte60 && !marcadas.has(g.clave));
   $('nRevisar').textContent = pendientes.length ? `(${pendientes.length})` : '';
-  const mot = $('fRevMotivo').value, pv = $('fRevProv').value, vista = $('fRevVista').value;
+  const mot = $('fRevMotivo').value, pv = $('fRevProv').value, vista = $('fRevVista').value, per = $('fRevPeriodo').value;
+  const corte = per === 'todo' ? '0000-00-00' : dEsc(Number(per));
   const agrupa = m => (m === 'dudosa' ? 'precio' : m);
-  const rows = todos.filter(x => (!mot || agrupa(x.motivo) === mot) && (!pv || x.proveedor === pv)
-    && (vista === 'todas' || (vista === 'marcadas') === marcadas.has(claveRev(x))));
+  const rows = todos.filter(g => g.fecha >= corte && (!pv || g.proveedor === pv)
+    && (!mot || g.items.some(x => agrupa(x.motivo) === mot))
+    && (vista === 'todas' || (vista === 'marcadas') === marcadas.has(g.clave)));
   const etiqueta = { monto: 'El monto no cierra', sin_producto: 'Línea sin producto', precio: 'Precio fuera de lo habitual', dudosa: 'Cantidad que no encaja' };
   const detalle = r => {
     if (r.motivo === 'monto') {
@@ -96,14 +120,15 @@ function renderRevisar() {
     }
     return `${esc(r.producto)}: ${num(r.cantidad)} por ${money(r.total)} = ${money(r.precio_unit)} por unidad; lo habitual ronda ${money(r.mediana)}.`;
   };
+  const lista = g => g.items.map(x => `• ${detalle(x)}`).join('<br>');
   $('tblRevisar').innerHTML = rows.length ? table([
-    { h: 'Fecha', f: r => esc(r.fecha) },
-    { h: 'Proveedor', f: r => esc(r.proveedor || '-') },
-    { h: 'Comprobante', f: r => esc(r.comprobante || '-') },
-    { h: 'Aviso', f: r => `<span class="chip">${etiqueta[r.motivo] || esc(r.motivo)}</span>` },
-    { h: 'Qué revisar', w: 1, f: r => marcadas.has(claveRev(r)) ? `<span class="hecho">${detalle(r)}</span>` : detalle(r) },
-    { h: 'Resuelto', n: 1, f: r => `<input type="checkbox" class="tilde" data-k="${encodeURIComponent(claveRev(r))}" ${marcadas.has(claveRev(r)) ? 'checked' : ''} title="Marcar como resuelto">` }
-  ], rows) : `<div class="empty">${vista === 'marcadas' ? 'Todavía no marcaste ninguna como resuelta.' : 'No hay cargas pendientes para revisar. 👌'}</div>`;
+    { h: 'Fecha', f: g => esc(g.fecha) },
+    { h: 'Proveedor', f: g => esc(g.proveedor || '-') },
+    { h: 'Comprobante', f: g => esc(g.comprobante || '-') },
+    { h: 'Avisos', f: g => [...new Set(g.items.map(x => etiqueta[x.motivo] || x.motivo))].map(t => `<span class="chip">${esc(t)}</span>`).join(' ') },
+    { h: 'Qué revisar', w: 1, f: g => marcadas.has(g.clave) ? `<span class="hecho">${lista(g)}</span>` : lista(g) },
+    { h: 'Resuelto', n: 1, f: g => `<input type="checkbox" class="tilde" data-k="${encodeURIComponent(g.clave)}" ${marcadas.has(g.clave) ? 'checked' : ''} title="Marcar la factura como resuelta">` }
+  ], rows) : `<div class="empty">${vista === 'marcadas' ? 'Todavía no marcaste ninguna como resuelta.' : 'No hay facturas pendientes para revisar en este período. 👌'}</div>`;
 }
 
 // Precios de compra por producto (lo que se carga en las facturas de FUDO, esté o no asociado a un insumo)
@@ -293,7 +318,7 @@ $('tabs').addEventListener('click', e => {
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 ['qProd', 'fProv'].forEach(i => $(i).addEventListener('input', renderProdCompra));
-['fRevMotivo', 'fRevProv', 'fRevVista'].forEach(i => $(i).addEventListener('change', renderRevisar));
+['fRevMotivo', 'fRevProv', 'fRevVista', 'fRevPeriodo'].forEach(i => $(i).addEventListener('change', renderRevisar));
 $('tblRevisar').addEventListener('change', async e => {
   const k = e.target.dataset?.k; if (!k) return;
   const ok = await marcarRevision(decodeURIComponent(k), e.target.checked);

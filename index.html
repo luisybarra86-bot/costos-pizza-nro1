@@ -225,6 +225,12 @@
     <h3 class="seccion" style="margin-top:0">Cargas para revisar</h3>
     <p class="nota">Controles automáticos sobre las facturas cargadas en FUDO: que el monto cierre con las líneas, que cada línea tenga producto y que el precio por unidad no se salga de lo habitual. Cuando corregís la carga en FUDO, el aviso desaparece solo en la próxima sincronización (6:00).</p>
     <div class="tools">
+      <select id="fRevPeriodo">
+        <option value="60" selected>Últimos 60 días</option>
+        <option value="30">Últimos 30 días</option>
+        <option value="90">Últimos 90 días</option>
+        <option value="todo">Todo el historial</option>
+      </select>
       <select id="fRevMotivo">
         <option value="">Todos los avisos</option>
         <option value="monto">El monto no cierra</option>
