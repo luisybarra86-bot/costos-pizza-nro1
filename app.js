@@ -430,6 +430,36 @@ $('mConsumo').addEventListener('change', renderConsumo);
 $('mCompras').addEventListener('change', renderCompras);
 ['vPeriodo', 'vModo'].forEach(i => $(i).addEventListener('change', cargarVentas));
 
+// ---- Botón "Actualizar ahora": dispara la sync con FUDO (supabase-sync-manual.sql) y recarga los datos al terminar ----
+let SYNC_POLL_MS = 4000;
+async function sincronizarAhora() {
+  const btn = $('btnSync'), estado = $('sync');
+  btn.disabled = true;
+  btn.textContent = 'Sincronizando…';
+  const fin = (texto) => { btn.disabled = false; btn.textContent = 'Actualizar ahora'; if (texto) estado.textContent = texto; };
+  try {
+    // Referencia tomada de la propia base, para no depender del reloj de este dispositivo
+    const { data: ult } = await db.from('sync_log').select('created_at').order('created_at', { ascending: false }).limit(1);
+    const desde = ult?.[0]?.created_at || '1970-01-01T00:00:00Z';
+    const { data, error } = await db.rpc('sync_manual');
+    if (error) return fin('No se pudo iniciar: ' + error.message);
+    if (data && data.ok === false) return fin('Ya hubo una sincronización hace un momento; esperá un minuto.');
+    estado.textContent = 'Sincronizando con FUDO…';
+    for (let i = 0; i < 45; i++) {
+      await new Promise(r => setTimeout(r, SYNC_POLL_MS));
+      const { data: l } = await db.from('sync_log').select('recurso,error,created_at').gt('created_at', desde);
+      const err = (l || []).find(x => x.error && x.recurso !== 'stock_productos');
+      if (err) { await cargar(); return fin(`La sync terminó con un error en ${err.recurso}; reintentá o avisame.`); }
+      if ((l || []).some(x => x.recurso === 'recetas')) { await cargar(); return fin(); } // "recetas" es el último paso
+    }
+    await cargar();
+    fin('La sincronización sigue en curso; recargá en un minuto.');
+  } catch (e) {
+    fin('No se pudo sincronizar: ' + (e.message || e));
+  }
+}
+$('btnSync').addEventListener('click', sincronizarAhora);
+
 // ---- Login (Supabase Auth). Sin sesión no se muestra ni se pide ningún dato ----
 function mostrar(conSesion) {
   $('login').classList.toggle('hidden', conSesion);

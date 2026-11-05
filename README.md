@@ -31,7 +31,8 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 11. `supabase-revisiones.sql` → tilde de "resuelto" en Revisar cargas (recordatorio guardado en la base, visible desde cualquier dispositivo).
 12. `supabase-stock.sql` → pestaña Stock: foto diaria del stock de FUDO (insumos y bebidas), stock estimado del proyecto (último conteo + compras asociadas - consumo teórico) y conteos detectados. Requiere redesplegar la función.
 13. `supabase-recetas.sql` → pestaña Recetas: productos vendidos con y sin receta, e insumos preparados sin receta propia. Requiere redesplegar la función (marca los insumos con receta propia).
-14. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+14. `supabase-sync-manual.sql` → botón "Actualizar ahora" del dashboard: dispara la sync sin esperar a las 6:00 (el token queda en el Vault, no viaja al navegador).
+15. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).

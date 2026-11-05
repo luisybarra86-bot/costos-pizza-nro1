@@ -30,6 +30,7 @@
   #sync { font-size:.72rem; opacity:.85; text-align:right; }
   header button { background:rgba(255,255,255,.15); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:9px; padding:6px 12px; cursor:pointer; font:600 .75rem var(--font-body); }
   header button:hover { background:rgba(255,255,255,.28); }
+  header button:disabled { opacity:.6; cursor:wait; }
   .checker-strip { height:10px; background:repeating-linear-gradient(90deg,var(--primary) 0 12px,#fff 0 24px); }
 
   main { max-width:1100px; margin:0 auto; padding:18px 16px 40px; }
@@ -135,6 +136,7 @@
   <h1>PIZZA Nº1<span class="sub">Costos e insumos</span></h1>
   <div class="right">
     <span id="sync"></span>
+    <button id="btnSync" type="button" title="Trae ahora los datos de FUDO, sin esperar a las 6:00">Actualizar ahora</button>
     <button id="btnSalir" type="button">Salir</button>
   </div>
 </header>
