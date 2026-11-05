@@ -41,6 +41,9 @@
   nav button.on { background:var(--primary); color:#fff; border-color:var(--primary); }
   nav #nAlertas, nav #nRevisar { background:var(--amber); color:#2b2b2b; font-weight:600; border-radius:999px; padding:1px 7px; font-size:.7rem; margin-left:4px; }
   nav #nAlertas:empty, nav #nRevisar:empty { display:none; }
+  .chip.ok { background:var(--primary-soft); color:var(--primary-dark); }
+  .chip.mal { background:#F6D9A8; color:#7a4a00; }
+  .chip.gris { background:#ececec; color:#666; }
   .hecho { text-decoration:line-through; color:var(--muted); }
   input.tilde { width:20px; height:20px; accent-color:var(--primary); cursor:pointer; vertical-align:middle; }
   .chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:.7rem; font-weight:600; background:#FBF1D9; color:#8a5a00; white-space:nowrap; }
@@ -143,6 +146,7 @@
     <button data-t="precios">Precios</button>
     <button data-t="consumo">Consumo</button>
     <button data-t="compras">Compras</button>
+    <button data-t="stock">Stock</button>
     <button data-t="alertas">Alertas <span id="nAlertas"></span></button>
     <button data-t="revisar">Revisar cargas <span id="nRevisar"></span></button>
   </nav>
@@ -210,6 +214,31 @@
     <div class="card"><h3>Productos comprados sin insumo asociado</h3>
       <p style="color:var(--muted);margin-top:0">Compras que todavía no entran en las cuentas de arriba (bebidas, limpieza, descartables u otros que falta asociar a un insumo).</p>
       <div id="tblSinMapear"></div></div>
+  </section>
+
+  <section id="stock" class="hidden">
+    <h3 class="seccion" style="margin-top:0">Stock</h3>
+    <p class="nota">Insumos y bebidas con control de stock. <b>Stock en FUDO</b> es lo que dice FUDO. <b>Estimado</b> es el stock del proyecto: el del último conteo, más las compras asociadas a cada insumo, menos el consumo según ventas y recetas; en FUDO las compras no suman al stock de los insumos, por eso el estimado es el que sirve para decidir. En las bebidas, el stock de FUDO ya es el correcto. Cuando hacés un conteo en FUDO (Productos &gt; Conteo de inventario), el proyecto lo detecta al día siguiente y lo toma como punto de partida.</p>
+    <div class="kpis" id="kStock"></div>
+    <div class="tools">
+      <input id="qStock" placeholder="Buscar…">
+      <select id="fStockTipo"><option value="">Insumos y bebidas</option><option value="insumo">Solo insumos</option><option value="bebida">Solo bebidas</option></select>
+      <select id="fStockEstado">
+        <option value="">Todos los estados</option>
+        <option value="negativo">En negativo</option>
+        <option value="por_acabarse">Por acabarse</option>
+        <option value="bajo_minimo">Bajo el mínimo</option>
+        <option value="sin_contar">Sin contar</option>
+        <option value="ok">Ok</option>
+      </select>
+    </div>
+    <div class="card"><div id="tblStock"></div></div>
+    <div class="card"><h3>Qué contar primero</h3>
+      <p style="color:var(--muted);margin-top:0">Insumos que todavía no tienen un conteo detectado, ordenados por cuánto consumen. Empezá el inventario por los de arriba.</p>
+      <div id="tblContar"></div></div>
+    <div class="card"><h3>Diferencias detectadas en los conteos</h3>
+      <p style="color:var(--muted);margin-top:0">Cuando el stock de FUDO cambia más de lo que explican las ventas y las compras cargadas, se registra como conteo. Positivo: apareció más de lo esperado; negativo: faltó (merma o error de carga). Valuado al último precio.</p>
+      <div id="tblDifStock"></div></div>
   </section>
 
   <section id="alertas" class="hidden">

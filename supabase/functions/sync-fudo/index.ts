@@ -249,6 +249,23 @@ Deno.serve(async (req) => {
       if (error) throw new Error(error.message);
     }
     resultado.precios_nuevos = nuevos.length;
+
+    // Foto diaria del stock de FUDO de los insumos con control de stock (base de la pestaña Stock)
+    const fotoInsumos = ings.filter((g) => g.attributes?.stockControl).map((g) => ({
+      fecha: hoy,
+      tipo: "insumo",
+      item_id: String(g.id),
+      nombre: String(g.attributes?.name ?? ""),
+      categoria: null,
+      unidad: unidades.get(String(g.relationships?.unit?.data?.id)) ?? "und",
+      stock: g.attributes?.stock ?? null,
+      stock_minimo: g.attributes?.minStock ?? null,
+    }));
+    for (let i = 0; i < fotoInsumos.length; i += 200) {
+      const { error } = await db.from("stock_snapshots").upsert(fotoInsumos.slice(i, i + 200), { onConflict: "fecha,tipo,item_id" });
+      if (error) throw new Error(error.message);
+    }
+    resultado.stock_insumos = fotoInsumos.length;
     await log("ingredientes", nuevos.length);
   } catch (e) {
     const msg = e instanceof Error ? e.message : JSON.stringify(e);
@@ -401,6 +418,31 @@ Deno.serve(async (req) => {
     const msg = e instanceof Error ? e.message : JSON.stringify(e);
     await log("compras", 0, msg);
     return json({ ok: false, recurso: "compras", parcial: resultado, error: msg }, 500);
+  }
+
+  // ---------- Foto diaria del stock de productos con control (la pestaña Stock usa solo las bebidas) ----------
+  // Si falla no frena el resto de la sync: queda registrado en sync_log.
+  try {
+    const { data: prodsStock, included: incStock } = await fudoList(token, "products", { include: "productCategory" });
+    const catStock = new Map(incStock.filter((x) => x.type === "ProductCategory").map((x) => [String(x.id), String(x.attributes?.name ?? "")]));
+    const fotoProductos = prodsStock.filter((p) => p.attributes?.stockControl).map((p) => ({
+      fecha: hoy,
+      tipo: "producto",
+      item_id: String(p.id),
+      nombre: String(p.attributes?.name ?? ""),
+      categoria: catStock.get(String(p.relationships?.productCategory?.data?.id)) || null,
+      unidad: "und",
+      stock: p.attributes?.stock ?? null,
+      stock_minimo: p.attributes?.minStock ?? null,
+    }));
+    for (let i = 0; i < fotoProductos.length; i += 200) {
+      const { error } = await db.from("stock_snapshots").upsert(fotoProductos.slice(i, i + 200), { onConflict: "fecha,tipo,item_id" });
+      if (error) throw new Error(error.message);
+    }
+    resultado.stock_productos = fotoProductos.length;
+    await log("stock_productos", fotoProductos.length);
+  } catch (e) {
+    await log("stock_productos", 0, e instanceof Error ? e.message : JSON.stringify(e));
   }
 
   // ---------- Recetas (products.proportions: cantidad de insumo por unidad vendida) ----------

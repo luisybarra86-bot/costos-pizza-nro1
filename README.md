@@ -2,7 +2,7 @@
 
 Dashboard de costos alimentado automáticamente desde FUDO: ventas, precios de insumos, consumo teórico (ventas × recetas) y alertas de stock. HTML/JS puro + Supabase (mismo proyecto que `pedidos-pizza-nro1`), publicado en GitHub Pages.
 
-Pestañas: **Ventas** · **Precios** · **Consumo** · **Compras** · **Alertas** · **Revisar cargas**.
+Pestañas: **Ventas** · **Precios** · **Consumo** · **Compras** · **Stock** · **Alertas** · **Revisar cargas**.
 
 **Ventas** muestra, por período y modo de venta (salón, take away, delivery): monto, cantidad y ticket promedio; qué se vendió por rubro (porción, NY Grande, molde, media masa, bebida, dip, promo) y por producto; cuándo (día de la semana y franja horaria) y las cajas usadas. El rubro sale de la categoría del producto en FUDO; los combos se descomponen por su nombre (ej. "2 Cheese Slice + Coca" = 2 porciones).
 
@@ -29,7 +29,8 @@ Todo viene de FUDO sin carga manual. Las compras salen de los gastos con detalle
 9. `supabase-bultos.sql` → lleva las compras de bebidas a unidades (botellas) según las unidades por cajón/fardo (tabla `producto_bulto`).
 10. `supabase-cargas.sql` → controles de las facturas cargadas (pestaña Revisar cargas): monto que no cierra con las líneas, líneas sin producto y precios fuera de lo habitual. Requiere redesplegar la función y volver a sincronizar el historial.
 11. `supabase-revisiones.sql` → tilde de "resuelto" en Revisar cargas (recordatorio guardado en la base, visible desde cualquier dispositivo).
-12. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
+12. `supabase-stock.sql` → pestaña Stock: foto diaria del stock de FUDO (insumos y bebidas), stock estimado del proyecto (último conteo + compras asociadas - consumo teórico) y conteos detectados. Requiere redesplegar la función.
+13. `supabase-cron.sql` → sync diaria (reemplazar `TU_SYNC_TOKEN`).
 
 Además:
 - **Config web:** copiar `config.example.js` a `config.js` (URL y anon key de Supabase).

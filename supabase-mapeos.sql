@@ -7,7 +7,8 @@
 insert into compra_productos (fudo_product_id, producto_nombre, insumo_id, factor)
 select v.id, v.nombre, i.id, v.factor
 from (values
-  ('183', 'Aceitunas negras copim x 5kg', 'Aceitunas Negras', 5)
+  ('183', 'Aceitunas negras copim x 5kg', 'Aceitunas Negras', 5),
+  ('190', 'Queso crema Paulina x 4kg', 'Queso Crema Paulina', 4)
 ) as v(id, nombre, insumo, factor)
 join insumos i on i.nombre = v.insumo
 on conflict (fudo_product_id) do update

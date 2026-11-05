@@ -22,7 +22,7 @@ function table(cols, rows, cls = 'compacta') {
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, c, l, ins, al, co, sm, pc, rv, mk] = await Promise.all([
+  const [p, c, l, ins, al, co, sm, pc, rv, mk, sp, sd] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
@@ -32,7 +32,9 @@ async function cargar() {
     db.from('v_compras_sin_mapear').select('*').order('total', { ascending: false }),
     db.from('v_precios_compra_producto').select('*').order('fecha', { ascending: false }), // supabase-precios-compra.sql
     db.from('v_cargas_revisar').select('*').order('fecha', { ascending: false }), // supabase-cargas.sql
-    db.from('revisiones_marcadas').select('clave') // supabase-revisiones.sql
+    db.from('revisiones_marcadas').select('clave'), // supabase-revisiones.sql
+    db.from('v_stock_panel').select('*'), // supabase-stock.sql
+    db.from('v_stock_diferencias').select('*').order('fecha', { ascending: false })
   ]);
   const err = [p, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
@@ -49,10 +51,61 @@ async function cargar() {
   $('fProv').innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(x => `<option>${esc(x)}</option>`).join('');
   S.revisar = rv.data || [];
   S.marcadas = new Set((mk.data || []).map(x => x.clave));
+  S.stock = sp.data || [];
+  S.difStock = sd.data || [];
   const provRev = [...new Set(S.revisar.map(x => x.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   $('fRevProv').innerHTML = '<option value="">Todos los proveedores</option>' + provRev.map(x => `<option>${esc(x)}</option>`).join('');
-  renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras(); renderRevisar();
+  renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras(); renderRevisar(); renderStock();
   cargarVentas();
+}
+
+// ---- Stock (supabase-stock.sql): estado de insumos y bebidas, stock estimado del proyecto y conteos detectados ----
+const ESTADO_STOCK = {
+  negativo: ['En negativo', 'mal'], por_acabarse: ['Por acabarse', ''], bajo_minimo: ['Bajo el mínimo', ''],
+  sin_contar: ['Sin contar', 'gris'], ok: ['Ok', 'ok']
+};
+const ORDEN_STOCK = { negativo: 0, por_acabarse: 1, bajo_minimo: 2, sin_contar: 3, ok: 4 };
+
+function renderStock() {
+  const todos = S.stock || [];
+  const u = r => esc(r.unidad || '');
+  $('kStock').innerHTML = todos.length ? [
+    ['Valor del inventario', money(todos.reduce((a, r) => a + Number(r.valor || 0), 0))],
+    ['Por acabarse', num(todos.filter(r => r.estado === 'por_acabarse' || r.estado === 'bajo_minimo').length)],
+    ['En negativo', num(todos.filter(r => r.estado === 'negativo').length)],
+    ['Sin contar', num(todos.filter(r => r.estado === 'sin_contar').length)]
+  ].map(([a, b]) => `<div class="kpi"><small>${a}</small><b>${b}</b></div>`).join('') : '';
+
+  const q = $('qStock').value.toLowerCase(), tipo = $('fStockTipo').value, est = $('fStockEstado').value;
+  const rows = todos.filter(r => r.nombre.toLowerCase().includes(q) && (!tipo || r.tipo === tipo) && (!est || r.estado === est))
+    .sort((a, b) => (ORDEN_STOCK[a.estado] - ORDEN_STOCK[b.estado]) || a.nombre.localeCompare(b.nombre, 'es'));
+  $('tblStock').innerHTML = todos.length ? table([
+    { h: 'Producto', f: r => esc(r.nombre) + ` <small>(${u(r) || 'und'}${r.tipo === 'bebida' ? ', bebida' : ''})</small>` },
+    { h: 'Estado', f: r => { const e = ESTADO_STOCK[r.estado] || [r.estado, '']; return `<span class="chip ${e[1]}">${e[0]}</span>`; } },
+    { h: 'Stock en FUDO', n: 1, f: r => r.stock_fudo == null ? '-' : num(r.stock_fudo) },
+    { h: 'Estimado', n: 1, f: r => r.stock_estimado == null ? '-' : `<b>${num(r.stock_estimado)}</b>` },
+    { h: 'Alcanza', n: 1, f: r => r.dias_cobertura == null ? '-' : `${num(r.dias_cobertura)} días` },
+    { h: 'Comprar p/ 7 días', n: 1, f: r => Number(r.comprar_7d) > 0 ? `${num(r.comprar_7d)} ${u(r)}` : '-' },
+    { h: 'Último conteo', f: r => r.fecha_conteo ? esc(r.fecha_conteo) : 'Sin conteo' },
+    { h: 'Valor', n: 1, f: r => r.valor == null ? '-' : money(r.valor) }
+  ], rows) : '<div class="empty">Todavía no hay datos de stock: la primera foto se guarda en la próxima sincronización (6:00) y el stock estimado se arma a partir de ahí.</div>';
+
+  const contar = todos.filter(r => r.tipo === 'insumo' && !r.contado).sort((a, b) => Number(b.consumo_diario) - Number(a.consumo_diario)).slice(0, 15);
+  $('tblContar').innerHTML = table([
+    { h: 'Insumo', f: r => esc(r.nombre) },
+    { h: 'Consume por día', n: 1, f: r => `${num(r.consumo_diario)} ${u(r)}` },
+    { h: 'Stock en FUDO', n: 1, f: r => r.stock_fudo == null ? 'sin cargar' : num(r.stock_fudo) }
+  ], contar);
+
+  const difs = (S.difStock || []).filter(r => Number(r.diferencia) !== 0);
+  $('tblDifStock').innerHTML = difs.length ? table([
+    { h: 'Fecha', f: r => esc(r.fecha) },
+    { h: 'Producto', f: r => esc(r.nombre) },
+    { h: 'Esperado', n: 1, f: r => `${num(r.stock_esperado)} ${esc(r.unidad || '')}` },
+    { h: 'Contado', n: 1, f: r => `${num(r.stock_contado)} ${esc(r.unidad || '')}` },
+    { h: 'Diferencia', n: 1, f: r => `<span class="${r.diferencia < 0 ? 'up' : 'down'}">${r.diferencia > 0 ? '+' : ''}${num(r.diferencia)}</span>` },
+    { h: 'Valor', n: 1, f: r => r.precio == null ? '-' : money(r.diferencia * r.precio) }
+  ], difs) : '<div class="empty">Todavía no se detectó ningún conteo. Cuando hagas el inventario en FUDO, la diferencia aparece acá al día siguiente.</div>';
 }
 
 // Cargas para revisar (supabase-cargas.sql): monto que no cierra, líneas sin producto y precios fuera de lo habitual
@@ -313,11 +366,12 @@ function renderConsumo() {
 $('tabs').addEventListener('click', e => {
   const t = e.target.dataset.t; if (!t) return;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
-  ['ventas', 'precios', 'consumo', 'compras', 'alertas', 'revisar'].forEach(s => $(s).classList.toggle('hidden', s !== t));
+  ['ventas', 'precios', 'consumo', 'compras', 'stock', 'alertas', 'revisar'].forEach(s => $(s).classList.toggle('hidden', s !== t));
 });
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 ['qProd', 'fProv'].forEach(i => $(i).addEventListener('input', renderProdCompra));
+['qStock', 'fStockTipo', 'fStockEstado'].forEach(i => $(i).addEventListener('input', renderStock));
 ['fRevMotivo', 'fRevProv', 'fRevVista', 'fRevPeriodo'].forEach(i => $(i).addEventListener('change', renderRevisar));
 $('tblRevisar').addEventListener('change', async e => {
   const k = e.target.dataset?.k; if (!k) return;
