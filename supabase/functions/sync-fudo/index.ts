@@ -232,6 +232,8 @@ Deno.serve(async (req) => {
         db.from("insumos").update({
           stock_fudo: g.attributes?.stock ?? null,
           stock_control: Boolean(g.attributes?.stockControl),
+          // true si el insumo tiene receta propia en FUDO (se prepara en el local)
+          receta_propia: Boolean(g.relationships?.recipeCard?.data),
         }).eq("id", idPorFudo.get(String(g.id)))
       ));
     }

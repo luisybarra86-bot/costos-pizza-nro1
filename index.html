@@ -147,6 +147,7 @@
     <button data-t="consumo">Consumo</button>
     <button data-t="compras">Compras</button>
     <button data-t="stock">Stock</button>
+    <button data-t="recetas">Recetas</button>
     <button data-t="alertas">Alertas <span id="nAlertas"></span></button>
     <button data-t="revisar">Revisar cargas <span id="nRevisar"></span></button>
   </nav>
@@ -239,6 +240,21 @@
     <div class="card"><h3>Diferencias detectadas en los conteos</h3>
       <p style="color:var(--muted);margin-top:0">Cuando el stock de FUDO cambia más de lo que explican las ventas y las compras cargadas, se registra como conteo. Positivo: apareció más de lo esperado; negativo: faltó (merma o error de carga). Valuado al último precio.</p>
       <div id="tblDifStock"></div></div>
+  </section>
+
+  <section id="recetas" class="hidden">
+    <h3 class="seccion" style="margin-top:0">Recetas</h3>
+    <p class="nota">Una venta solo descuenta insumos (y suma al consumo del proyecto) si el producto vendido tiene receta en FUDO. Acá ves qué productos vendidos no la tienen y qué insumos preparados en el local no tienen receta propia. Las bebidas no necesitan receta: se compran y se venden como el mismo producto. Los datos de ventas son de los últimos 30 días.</p>
+    <div class="kpis" id="kRecetas"></div>
+    <div class="card"><h3>Productos vendidos sin receta</h3>
+      <p style="color:var(--muted);margin-top:0">No descuentan ningún insumo, así que su consumo no se cuenta. Para los combos, agregar la receta o armarlos con sus componentes en FUDO.</p>
+      <div id="tblRecSin"></div></div>
+    <div class="card"><h3>Insumos preparados sin receta propia</h3>
+      <p style="color:var(--muted);margin-top:0">Se usan en recetas de venta pero no se compran ni tienen costo: se preparan en el local. Como no tienen receta propia, el consumo de sus materias primas (harina, levadura, tomate, etc.) no se refleja y su costo no entra en el costo teórico. Cargarles la receta en FUDO lo resuelve.</p>
+      <div id="tblRecIns"></div></div>
+    <div class="card"><h3>Productos con receta</h3>
+      <div class="tools"><input id="qRec" placeholder="Buscar producto…"></div>
+      <div id="tblRecCon"></div></div>
   </section>
 
   <section id="alertas" class="hidden">

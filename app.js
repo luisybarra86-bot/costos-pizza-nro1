@@ -22,7 +22,7 @@ function table(cols, rows, cls = 'compacta') {
 
 async function cargar() {
   const q = (t, o) => db.from(t).select('*').order(o.col, { ascending: o.asc ?? true });
-  const [p, c, l, ins, al, co, sm, pc, rv, mk, sp, sd] = await Promise.all([
+  const [p, c, l, ins, al, co, sm, pc, rv, mk, sp, sd, rp, ri] = await Promise.all([
     q('v_variacion_precios', { col: 'nombre' }),
     q('v_consumo_teorico', { col: 'mes', asc: false }),
     db.from('sync_log').select('created_at,error').order('created_at', { ascending: false }).limit(1),
@@ -34,7 +34,9 @@ async function cargar() {
     db.from('v_cargas_revisar').select('*').order('fecha', { ascending: false }), // supabase-cargas.sql
     db.from('revisiones_marcadas').select('clave'), // supabase-revisiones.sql
     db.from('v_stock_panel').select('*'), // supabase-stock.sql
-    db.from('v_stock_diferencias').select('*').order('fecha', { ascending: false })
+    db.from('v_stock_diferencias').select('*').order('fecha', { ascending: false }),
+    db.from('v_recetas_productos').select('*'), // supabase-recetas.sql
+    db.from('v_recetas_insumos').select('*')
   ]);
   const err = [p, c].find(x => x.error);
   if (err) { $('msg').textContent = 'Error: ' + err.error.message; $('msg').classList.remove('hidden'); return; }
@@ -53,10 +55,53 @@ async function cargar() {
   S.marcadas = new Set((mk.data || []).map(x => x.clave));
   S.stock = sp.data || [];
   S.difStock = sd.data || [];
+  S.recProd = rp.data || [];
+  S.recIns = ri.data || [];
   const provRev = [...new Set(S.revisar.map(x => x.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   $('fRevProv').innerHTML = '<option value="">Todos los proveedores</option>' + provRev.map(x => `<option>${esc(x)}</option>`).join('');
-  renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras(); renderRevisar(); renderStock();
+  renderPrecios(); renderProdCompra(); fillMeses(); renderAlertas(); renderCompras(); renderRevisar(); renderStock(); renderRecetas();
   cargarVentas();
+}
+
+// ---- Recetas (supabase-recetas.sql): qué productos vendidos tienen receta y qué insumos preparados no la tienen ----
+function renderRecetas() {
+  const P = S.recProd || [], I = S.recIns || [];
+  const sinBebidas = P.filter(p => p.estado !== 'directa' && Number(p.monto_30d) > 0);
+  const montoTotal = sinBebidas.reduce((a, p) => a + Number(p.monto_30d), 0);
+  const montoCon = sinBebidas.filter(p => p.estado === 'con_receta').reduce((a, p) => a + Number(p.monto_30d), 0);
+  const sinReceta = P.filter(p => p.estado === 'sin_receta' && Number(p.unidades_30d) > 0).sort((a, b) => Number(b.monto_30d) - Number(a.monto_30d));
+  const preparados = I.filter(i => i.estado === 'preparado_sin_receta').sort((a, b) => Number(b.consumo_30d) - Number(a.consumo_30d));
+  $('kRecetas').innerHTML = P.length ? [
+    ['Ventas con receta', montoTotal ? num(montoCon / montoTotal * 100) + '%' : '-'],
+    ['Productos vendidos sin receta', num(sinReceta.length)],
+    ['Insumos preparados sin receta', num(preparados.length)],
+    ['Productos con receta', num(P.filter(p => p.estado === 'con_receta').length)]
+  ].map(([a, b]) => `<div class="kpi"><small>${a}</small><b>${b}</b></div>`).join('') : '';
+
+  $('tblRecSin').innerHTML = table([
+    { h: 'Producto', f: r => esc(r.nombre) },
+    { h: 'Categoría', f: r => esc(r.categoria) },
+    { h: 'Unidades 30 días', n: 1, f: r => num(r.unidades_30d) },
+    { h: 'Ventas 30 días', n: 1, f: r => money(r.monto_30d) },
+    { h: 'Contiene', f: r => Number(r.porciones_nombre) > 0 ? `unas ${num(r.porciones_nombre)} porciones` : '-' }
+  ], sinReceta);
+
+  $('tblRecIns').innerHTML = table([
+    { h: 'Insumo', f: r => esc(r.nombre) },
+    { h: 'Se usa en', n: 1, f: r => `${num(r.productos)} productos` },
+    { h: 'Consume (30 días)', n: 1, f: r => `${num(r.consumo_30d)} ${esc(r.unidad || '')}` }
+  ], preparados);
+
+  const q = $('qRec').value.toLowerCase();
+  const con = P.filter(p => p.estado === 'con_receta' && p.nombre.toLowerCase().includes(q))
+    .sort((a, b) => Number(b.monto_30d) - Number(a.monto_30d));
+  $('tblRecCon').innerHTML = table([
+    { h: 'Producto', f: r => esc(r.nombre) },
+    { h: 'Categoría', f: r => esc(r.categoria) },
+    { h: 'Ingredientes', n: 1, f: r => num(r.ingredientes) },
+    { h: 'Unidades 30 días', n: 1, f: r => num(r.unidades_30d) },
+    { h: 'Ventas 30 días', n: 1, f: r => money(r.monto_30d) }
+  ], con);
 }
 
 // ---- Stock (supabase-stock.sql): estado de insumos y bebidas, stock estimado del proyecto y conteos detectados ----
@@ -366,12 +411,13 @@ function renderConsumo() {
 $('tabs').addEventListener('click', e => {
   const t = e.target.dataset.t; if (!t) return;
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
-  ['ventas', 'precios', 'consumo', 'compras', 'stock', 'alertas', 'revisar'].forEach(s => $(s).classList.toggle('hidden', s !== t));
+  ['ventas', 'precios', 'consumo', 'compras', 'stock', 'recetas', 'alertas', 'revisar'].forEach(s => $(s).classList.toggle('hidden', s !== t));
 });
 $('tblPrecios').addEventListener('click', e => { const id = e.target.dataset.h; if (id) { e.preventDefault(); historial(id); } });
 ['qPrecios', 'fPrecios'].forEach(i => $(i).addEventListener('input', renderPrecios));
 ['qProd', 'fProv'].forEach(i => $(i).addEventListener('input', renderProdCompra));
 ['qStock', 'fStockTipo', 'fStockEstado'].forEach(i => $(i).addEventListener('input', renderStock));
+$('qRec').addEventListener('input', renderRecetas);
 ['fRevMotivo', 'fRevProv', 'fRevVista', 'fRevPeriodo'].forEach(i => $(i).addEventListener('change', renderRevisar));
 $('tblRevisar').addEventListener('change', async e => {
   const k = e.target.dataset?.k; if (!k) return;
