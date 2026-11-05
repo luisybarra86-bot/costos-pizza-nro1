@@ -221,7 +221,7 @@
 
   <section id="stock" class="hidden">
     <h3 class="seccion" style="margin-top:0">Stock</h3>
-    <p class="nota">Insumos y bebidas con control de stock. <b>Stock en FUDO</b> es lo que dice FUDO. <b>Estimado</b> es el stock del proyecto: el del último conteo, más las compras asociadas a cada insumo, menos el consumo según ventas y recetas; en FUDO las compras no suman al stock de los insumos, por eso el estimado es el que sirve para decidir. En las bebidas, el stock de FUDO ya es el correcto. Cuando hacés un conteo en FUDO (Productos &gt; Conteo de inventario), el proyecto lo detecta al día siguiente y lo toma como punto de partida.</p>
+    <p class="nota">Insumos y bebidas con control de stock. <b>Stock en FUDO</b> es lo que dice FUDO: descuenta todo el consumo (también el que pasa por masas y salsas) pero no suma las compras que cargás contra productos de compra. <b>Estimado</b> es el stock del proyecto: el de FUDO más esas compras, por eso es el que sirve para decidir. En las bebidas, el stock de FUDO ya es el correcto. Cuando hacés un conteo en FUDO (Productos &gt; Conteo de inventario), el proyecto lo detecta al día siguiente, o al instante con el botón Actualizar ahora, y desde ahí calcula.</p>
     <div class="kpis" id="kStock"></div>
     <div class="tools">
       <input id="qStock" placeholder="Buscar…">
@@ -246,13 +246,16 @@
 
   <section id="recetas" class="hidden">
     <h3 class="seccion" style="margin-top:0">Recetas</h3>
-    <p class="nota">Una venta solo descuenta insumos (y suma al consumo del proyecto) si el producto vendido tiene receta en FUDO. Acá ves qué productos vendidos no la tienen y qué insumos preparados en el local no tienen receta propia. Las bebidas no necesitan receta: se compran y se venden como el mismo producto. Los datos de ventas son de los últimos 30 días.</p>
+    <p class="nota">Una venta solo descuenta insumos (y suma al consumo del proyecto) si el producto vendido tiene receta en FUDO. Acá ves qué productos vendidos no la tienen, qué preparados del local (masas, salsas, pizzas XL) tienen receta en FUDO y qué insumos no tienen ni costo ni receta. Las bebidas no necesitan receta: se compran y se venden como el mismo producto. Los datos de ventas son de los últimos 30 días.</p>
     <div class="kpis" id="kRecetas"></div>
     <div class="card"><h3>Productos vendidos sin receta</h3>
       <p style="color:var(--muted);margin-top:0">No descuentan ningún insumo, así que su consumo no se cuenta. Para los combos, agregar la receta o armarlos con sus componentes en FUDO.</p>
       <div id="tblRecSin"></div></div>
-    <div class="card"><h3>Insumos preparados sin receta propia</h3>
-      <p style="color:var(--muted);margin-top:0">Se usan en recetas de venta pero no se compran ni tienen costo: se preparan en el local. Como no tienen receta propia, el consumo de sus materias primas (harina, levadura, tomate, etc.) no se refleja y su costo no entra en el costo teórico. Cargarles la receta en FUDO lo resuelve.</p>
+    <div class="card"><h3>Preparados con receta en FUDO</h3>
+      <p style="color:var(--muted);margin-top:0">Masas, salsas y pizzas XL que se preparan en el local. FUDO les calcula el costo a partir de su receta y descuenta sus materias primas (harina, levadura, tomate, etc.) cuando se vende. Ese costo es el que usa el proyecto. La API de FUDO no muestra qué lleva cada uno.</p>
+      <div id="tblRecPrep"></div></div>
+    <div class="card"><h3>Insumos sin costo ni receta</h3>
+      <p style="color:var(--muted);margin-top:0">Se usan en recetas de venta pero no tienen ningún costo cargado ni receta propia: su costo no entra en el costo teórico. Cargarles el costo (o la receta, si se preparan) en FUDO lo resuelve.</p>
       <div id="tblRecIns"></div></div>
     <div class="card"><h3>Productos con receta</h3>
       <div class="tools"><input id="qRec" placeholder="Buscar producto…"></div>

@@ -189,7 +189,11 @@ Deno.serve(async (req) => {
 
   // ---------- Precios de insumos (ingredients.cost) ----------
   try {
-    const { data: ings, included: incIng } = await fudoList(token, "ingredients", { include: "unit" });
+    // calculatedCost: costo que FUDO calcula desde la receta de un insumo preparado (masas, salsas, pizzas XL)
+    const { data: ings, included: incIng } = await fudoList(token, "ingredients", {
+      include: "unit",
+      "fields[ingredient]": "name,cost,calculatedCost,stock,minStock,stockControl,recipeCard,unit",
+    });
     const unidades = new Map(incIng.filter((x) => x.type === "Unit").map((u) => [String(u.id), String(u.attributes?.name ?? "und")]));
     const { data: insumos0 } = await db.from("insumos").select("id,nombre,fudo_ingredient_id");
     const porFudo0 = new Map((insumos0 ?? []).filter((i) => i.fudo_ingredient_id).map((i) => [i.fudo_ingredient_id, i]));
@@ -232,8 +236,11 @@ Deno.serve(async (req) => {
         db.from("insumos").update({
           stock_fudo: g.attributes?.stock ?? null,
           stock_control: Boolean(g.attributes?.stockControl),
-          // true si el insumo tiene receta propia en FUDO (se prepara en el local)
-          receta_propia: Boolean(g.relationships?.recipeCard?.data),
+          // true si el insumo se prepara en el local: tiene receta propia, o FUDO le calcula el costo sin tenerlo cargado.
+          // (La API no muestra qué lleva cada preparado, solo su costo calculado.)
+          receta_propia: Boolean(g.relationships?.recipeCard?.data) ||
+            (!(Number(g.attributes?.cost ?? 0) > 0) && Number(g.attributes?.calculatedCost ?? 0) > 0),
+          costo_calculado: g.attributes?.calculatedCost ?? null,
         }).eq("id", idPorFudo.get(String(g.id)))
       ));
     }
@@ -241,10 +248,16 @@ Deno.serve(async (req) => {
     const nuevos: any[] = [];
     for (const g of ings) {
       const insId = idPorFudo.get(String(g.id));
-      const costo = Number(g.attributes?.cost ?? 0);
-      if (insId && costo > 0 && precioActual.get(insId) !== costo) {
-        nuevos.push({ insumo_id: insId, precio: costo, fecha: hoy, fuente: "fudo" });
-      }
+      if (!insId) continue;
+      const cargado = Number(g.attributes?.cost ?? 0);
+      const calculado = Number(g.attributes?.calculatedCost ?? 0);
+      // Costo cargado a mano; si no hay, el que FUDO calcula desde la receta del insumo preparado
+      const costo = cargado > 0 ? cargado : calculado;
+      if (!(costo > 0)) continue;
+      const previo = precioActual.get(insId);
+      // El costo calculado se mueve con cada precio de sus materias primas: solo se registra si cambia más de 0,5%
+      const cambio = previo === undefined ? true : cargado > 0 ? previo !== costo : Math.abs(costo / previo - 1) > 0.005;
+      if (cambio) nuevos.push({ insumo_id: insId, precio: costo, fecha: hoy, fuente: cargado > 0 ? "fudo" : "receta" });
     }
     if (nuevos.length) {
       const { error } = await db.from("precios_insumo").insert(nuevos);

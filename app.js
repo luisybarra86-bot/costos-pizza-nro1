@@ -70,12 +70,14 @@ function renderRecetas() {
   const montoTotal = sinBebidas.reduce((a, p) => a + Number(p.monto_30d), 0);
   const montoCon = sinBebidas.filter(p => p.estado === 'con_receta').reduce((a, p) => a + Number(p.monto_30d), 0);
   const sinReceta = P.filter(p => p.estado === 'sin_receta' && Number(p.unidades_30d) > 0).sort((a, b) => Number(b.monto_30d) - Number(a.monto_30d));
-  const preparados = I.filter(i => i.estado === 'preparado_sin_receta').sort((a, b) => Number(b.consumo_30d) - Number(a.consumo_30d));
+  const sinNada = I.filter(i => i.estado === 'preparado_sin_receta').sort((a, b) => Number(b.consumo_30d) - Number(a.consumo_30d));
+  const prep = I.filter(i => i.estado === 'con_receta_propia')
+    .sort((a, b) => Number(b.consumo_30d) * Number(b.costo_calculado || 0) - Number(a.consumo_30d) * Number(a.costo_calculado || 0));
   $('kRecetas').innerHTML = P.length ? [
     ['Ventas con receta', montoTotal ? num(montoCon / montoTotal * 100) + '%' : '-'],
     ['Productos vendidos sin receta', num(sinReceta.length)],
-    ['Insumos preparados sin receta', num(preparados.length)],
-    ['Productos con receta', num(P.filter(p => p.estado === 'con_receta').length)]
+    ['Preparados con receta en FUDO', num(prep.length)],
+    ['Insumos sin costo ni receta', num(sinNada.length)]
   ].map(([a, b]) => `<div class="kpi"><small>${a}</small><b>${b}</b></div>`).join('') : '';
 
   $('tblRecSin').innerHTML = table([
@@ -86,11 +88,19 @@ function renderRecetas() {
     { h: 'Contiene', f: r => Number(r.porciones_nombre) > 0 ? `unas ${num(r.porciones_nombre)} porciones` : '-' }
   ], sinReceta);
 
-  $('tblRecIns').innerHTML = table([
+  $('tblRecPrep').innerHTML = table([
+    { h: 'Preparado', f: r => esc(r.nombre) },
+    { h: 'Costo calculado', n: 1, f: r => `${money(r.costo_calculado)}/${esc(r.unidad || 'u')}` },
+    { h: 'Se usa en', n: 1, f: r => `${num(r.productos)} productos` },
+    { h: 'Consume (30 días)', n: 1, f: r => `${num(r.consumo_30d)} ${esc(r.unidad || '')}` },
+    { h: 'Costo (30 días)', n: 1, f: r => money(Number(r.consumo_30d) * Number(r.costo_calculado || 0)) }
+  ], prep);
+
+  $('tblRecIns').innerHTML = sinNada.length ? table([
     { h: 'Insumo', f: r => esc(r.nombre) },
     { h: 'Se usa en', n: 1, f: r => `${num(r.productos)} productos` },
     { h: 'Consume (30 días)', n: 1, f: r => `${num(r.consumo_30d)} ${esc(r.unidad || '')}` }
-  ], preparados);
+  ], sinNada) : '<div class="empty">Todos los insumos usados en recetas tienen costo o receta. 👌</div>';
 
   const q = $('qRec').value.toLowerCase();
   const con = P.filter(p => p.estado === 'con_receta' && p.nombre.toLowerCase().includes(q))
